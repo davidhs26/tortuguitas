@@ -118,6 +118,30 @@ const RootLayoutNav = memo(function RootLayoutNav() {
                   presentation: 'card',
                 }}
               />
+              <Stack.Screen
+                name="notificaciones"
+                options={{
+                  title: 'Notificaciones',
+                  headerBackTitle: 'Volver',
+                  presentation: 'card',
+                }}
+              />
+              <Stack.Screen
+                name="pagos"
+                options={{
+                  title: 'Mis Pagos',
+                  headerBackTitle: 'Volver',
+                  presentation: 'card',
+                }}
+              />
+              <Stack.Screen
+                name="estadisticas"
+                options={{
+                  title: 'Estadísticas',
+                  headerBackTitle: 'Volver',
+                  presentation: 'card',
+                }}
+              />
               </Stack>
             </ToastProvider>
           </BottomSheetModalProvider>

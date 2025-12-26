@@ -465,6 +465,63 @@ export default function PerfilScreen() {
             style={styles.quickAccessRow}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/pagos');
+            }}
+          >
+            <View style={[styles.quickAccessIcon, { backgroundColor: '#D1FAE5' }]}>
+              <FontAwesome name="credit-card" size={16} color="#059669" />
+            </View>
+            <View style={styles.quickAccessInfo}>
+              <Text style={styles.quickAccessTitle}>Mis Pagos</Text>
+              <Text style={styles.quickAccessSubtitle}>Historial y pagos pendientes</Text>
+            </View>
+            <FontAwesome name="chevron-right" size={14} color={Theme.colors.textTertiary} />
+          </Pressable>
+
+          <View style={styles.quickAccessDivider} />
+
+          <Pressable
+            style={styles.quickAccessRow}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/estadisticas');
+            }}
+          >
+            <View style={[styles.quickAccessIcon, { backgroundColor: '#FEF3C7' }]}>
+              <FontAwesome name="bar-chart" size={16} color="#D97706" />
+            </View>
+            <View style={styles.quickAccessInfo}>
+              <Text style={styles.quickAccessTitle}>Estadísticas</Text>
+              <Text style={styles.quickAccessSubtitle}>Tu actividad en la quinta</Text>
+            </View>
+            <FontAwesome name="chevron-right" size={14} color={Theme.colors.textTertiary} />
+          </Pressable>
+
+          <View style={styles.quickAccessDivider} />
+
+          <Pressable
+            style={styles.quickAccessRow}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/notificaciones');
+            }}
+          >
+            <View style={[styles.quickAccessIcon, { backgroundColor: '#FCE7F3' }]}>
+              <FontAwesome name="bell" size={16} color="#DB2777" />
+            </View>
+            <View style={styles.quickAccessInfo}>
+              <Text style={styles.quickAccessTitle}>Notificaciones</Text>
+              <Text style={styles.quickAccessSubtitle}>Centro de notificaciones</Text>
+            </View>
+            <FontAwesome name="chevron-right" size={14} color={Theme.colors.textTertiary} />
+          </Pressable>
+
+          <View style={styles.quickAccessDivider} />
+
+          <Pressable
+            style={styles.quickAccessRow}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push('/configuracion');
             }}
           >

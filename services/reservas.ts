@@ -220,9 +220,72 @@ export async function actualizarReserva(id: string, updates: Partial<Reserva>): 
   });
 }
 
-// Cancelar reserva
-export async function cancelarReserva(id: string): Promise<void> {
-  await actualizarReserva(id, { estado: 'cancelada' });
+// Cancelar reserva con validaciones
+export async function cancelarReserva(
+  id: string,
+  motivo?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const reserva = await getReserva(id);
+
+    if (!reserva) {
+      return { success: false, error: 'Reserva no encontrada' };
+    }
+
+    if (reserva.estado === 'cancelada') {
+      return { success: false, error: 'La reserva ya está cancelada' };
+    }
+
+    // Check cancellation policy (24 hours before Shabbat)
+    const ahora = new Date();
+    const fechaShabbat = new Date(reserva.fechaShabbat);
+    const horasAntes = (fechaShabbat.getTime() - ahora.getTime()) / (1000 * 60 * 60);
+
+    if (horasAntes < 24) {
+      return {
+        success: false,
+        error: 'No se puede cancelar con menos de 24 horas de anticipación',
+      };
+    }
+
+    await actualizarReserva(id, {
+      estado: 'cancelada',
+      motivoCancelacion: motivo,
+      fechaCancelacion: new Date(),
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error canceling reservation:', error);
+    return { success: false, error: error.message || 'Error al cancelar' };
+  }
+}
+
+// Check if reservation can be cancelled
+export function puedeCancelar(reserva: Reserva): {
+  puede: boolean;
+  motivo?: string;
+} {
+  if (reserva.estado === 'cancelada') {
+    return { puede: false, motivo: 'Ya está cancelada' };
+  }
+
+  const ahora = new Date();
+  const fechaShabbat = new Date(reserva.fechaShabbat);
+  const horasAntes = (fechaShabbat.getTime() - ahora.getTime()) / (1000 * 60 * 60);
+
+  if (horasAntes < 24) {
+    return {
+      puede: false,
+      motivo: 'Menos de 24 horas para el Shabbat',
+    };
+  }
+
+  if (fechaShabbat < ahora) {
+    return { puede: false, motivo: 'El Shabbat ya pasó' };
+  }
+
+  return { puede: true };
 }
 
 // Confirmar reservas (proceso del miércoles)
