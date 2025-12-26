@@ -1,27 +1,45 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   RefreshControl,
+  Pressable,
+  Dimensions,
 } from 'react-native';
+import Animated, {
+  FadeInDown,
+  FadeInRight,
+} from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { format, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { FontAwesome } from '@expo/vector-icons';
 import { useAuth, useReservas } from '@/context';
-import { Button, Card } from '@/components/ui';
+import {
+  AnimatedCard,
+  AnimatedButton,
+  Avatar,
+  Badge,
+  Skeleton,
+  useToast,
+} from '@/components/ui';
+import { Theme } from '@/constants/Theme';
 import { calcularMinyan } from '@/services/actividades';
+
+const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const { user } = useAuth();
+  const toast = useToast();
   const {
     misReservas,
     proximoShabbat,
     puedeReservar,
     cargarMisReservas,
     cargarDisponibilidad,
-    loading,
   } = useReservas();
 
   const [minyanInfo, setMinyanInfo] = useState<{
@@ -30,6 +48,7 @@ export default function HomeScreen() {
     faltantes: number;
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
     if (user) {
@@ -38,324 +57,587 @@ export default function HomeScreen() {
   }, [user]);
 
   const loadData = async () => {
-    await cargarMisReservas();
-    await cargarDisponibilidad(proximoShabbat);
-
     try {
+      await Promise.all([
+        cargarMisReservas(),
+        cargarDisponibilidad(proximoShabbat),
+      ]);
+
       const minyan = await calcularMinyan(proximoShabbat);
       setMinyanInfo(minyan);
     } catch (err) {
-      console.error('Error calculando minyan:', err);
+      console.error('Error cargando datos:', err);
+    } finally {
+      setInitialLoading(false);
     }
   };
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
-  };
+    toast.success('Actualizado', 'Datos actualizados correctamente');
+  }, []);
 
   const proximaReserva = misReservas.find(
     r => r.estado !== 'cancelada' && new Date(r.fechaShabbat) >= new Date()
   );
 
-  const fechaShabbatFormateada = format(proximoShabbat, "EEEE d 'de' MMMM", {
-    locale: es,
-  });
-
   const shabbatDate = format(addDays(proximoShabbat, 1), "d 'de' MMMM", {
     locale: es,
   });
+
+  const llegadaDate = format(proximoShabbat, "EEEE d", {
+    locale: es,
+  });
+
+  const SECTOR_NAMES: Record<string, string> = {
+    david: 'Sector David',
+    mumi: 'Sector Mumi',
+    tuni: 'Sector Tuni',
+    quincho: 'Quincho',
+    libre: 'Sin asignar',
+  };
+
+  if (initialLoading) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.greetingSection}>
+          <Skeleton width={200} height={32} />
+          <Skeleton width={160} height={20} style={{ marginTop: 8 }} />
+        </View>
+        <Skeleton height={180} borderRadius={20} style={{ marginBottom: 16 }} />
+        <Skeleton height={120} borderRadius={16} style={{ marginBottom: 16 }} />
+        <Skeleton height={80} borderRadius={16} />
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={Theme.colors.primary}
+        />
       }
     >
-      {/* Saludo */}
-      <View style={styles.greeting}>
-        <Text style={styles.greetingText}>
-          Hola, {user?.nombre || 'Familia'}!
-        </Text>
-        <Text style={styles.subGreeting}>
-          {puedeReservar
-            ? 'Las reservas estan abiertas'
-            : 'Proximamente abriran las reservas'}
-        </Text>
-      </View>
-
-      {/* Proximo Shabbat */}
-      <Card style={styles.shabbatCard} variant="elevated">
-        <Text style={styles.cardTitle}>Proximo Shabbat</Text>
-        <Text style={styles.shabbatDate}>{shabbatDate}</Text>
-        <Text style={styles.shabbatArrival}>
-          Llegada: {fechaShabbatFormateada}
-        </Text>
-
-        {puedeReservar && !proximaReserva && (
-          <Button
-            title="Hacer Reserva"
-            onPress={() => router.push('/(tabs)/reservas')}
-            style={styles.reserveButton}
+      {/* Greeting Section */}
+      <Animated.View
+        entering={FadeInDown.duration(400).delay(100)}
+        style={styles.greetingSection}
+      >
+        <View style={styles.greetingRow}>
+          <View style={styles.greetingText}>
+            <Text style={styles.greeting}>Shalom,</Text>
+            <Text style={styles.userName}>{user?.nombre || 'Familia'}</Text>
+          </View>
+          <Pressable onPress={() => router.push('/(tabs)/perfil')}>
+            <Avatar
+              name={`${user?.nombre} ${user?.apellido}`}
+              size="large"
+              color={Theme.colors.primary}
+            />
+          </Pressable>
+        </View>
+        <View style={styles.userBadges}>
+          <Badge
+            label={SECTOR_NAMES[user?.grupoFamiliar || 'libre']}
+            variant="info"
+            size="small"
           />
-        )}
-      </Card>
+          {user?.esAdmin && (
+            <Badge label="Admin" variant="error" size="small" />
+          )}
+        </View>
+      </Animated.View>
 
-      {/* Mi Reserva */}
-      {proximaReserva && (
-        <Card style={styles.reservaCard} variant="elevated">
-          <View style={styles.reservaHeader}>
-            <Text style={styles.cardTitleDark}>Tu Reserva</Text>
-            <View
-              style={[
-                styles.estadoBadge,
-                proximaReserva.estado === 'confirmada'
-                  ? styles.estadoConfirmada
-                  : proximaReserva.estado === 'mudada'
-                  ? styles.estadoMudada
-                  : styles.estadoPendiente,
-              ]}
-            >
-              <Text style={styles.estadoText}>
-                {proximaReserva.estado.charAt(0).toUpperCase() +
-                  proximaReserva.estado.slice(1)}
-              </Text>
+      {/* Shabbat Card */}
+      <Animated.View entering={FadeInDown.duration(400).delay(200)}>
+        <LinearGradient
+          colors={[Theme.colors.primary, Theme.colors.primaryDark]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.shabbatCard}
+        >
+          <View style={styles.shabbatHeader}>
+            <View style={styles.shabbatBadge}>
+              <Text style={styles.shabbatBadgeText}>PROXIMO SHABBAT</Text>
+            </View>
+            <View style={styles.statusDot}>
+              <View style={[
+                styles.statusDotInner,
+                { backgroundColor: puedeReservar ? Theme.colors.success : Theme.colors.warning }
+              ]} />
             </View>
           </View>
 
-          <Text style={styles.habitacionNombre}>
-            {proximaReserva.habitacionNombre}
+          <Text style={styles.shabbatDate}>{shabbatDate}</Text>
+          <Text style={styles.shabbatArrival}>
+            <FontAwesome name="calendar" size={14} color="rgba(255,255,255,0.7)" />
+            {'  '}Llegada: {llegadaDate}
           </Text>
 
-          <Text style={styles.participantesLabel}>
-            Participantes: {proximaReserva.participantes.length}
-          </Text>
-
-          {proximaReserva.invitados.length > 0 && (
-            <Text style={styles.invitadosLabel}>
-              Invitados: {proximaReserva.invitados.length}
-            </Text>
+          {puedeReservar && !proximaReserva && (
+            <AnimatedButton
+              title="Hacer Reserva"
+              onPress={() => router.push('/(tabs)/reservas')}
+              variant="secondary"
+              style={styles.reserveButton}
+              haptic
+            />
           )}
 
-          <Button
-            title="Ver Detalles"
-            variant="outline"
+          {!puedeReservar && (
+            <View style={styles.closedBanner}>
+              <FontAwesome name="lock" size={12} color={Theme.colors.warning} />
+              <Text style={styles.closedText}>Reservas abren el lunes</Text>
+            </View>
+          )}
+        </LinearGradient>
+      </Animated.View>
+
+      {/* Current Reservation */}
+      {proximaReserva && (
+        <Animated.View entering={FadeInDown.duration(400).delay(300)}>
+          <AnimatedCard
+            variant="elevated"
+            style={styles.reservaCard}
             onPress={() => router.push(`/reserva/${proximaReserva.id}`)}
-            style={styles.detailsButton}
-          />
-        </Card>
+          >
+            <View style={styles.reservaHeader}>
+              <View>
+                <Text style={styles.reservaLabel}>Tu reserva</Text>
+                <Text style={styles.reservaHabitacion}>
+                  {proximaReserva.habitacionNombre}
+                </Text>
+              </View>
+              <Badge
+                label={proximaReserva.estado.charAt(0).toUpperCase() + proximaReserva.estado.slice(1)}
+                variant={
+                  proximaReserva.estado === 'confirmada'
+                    ? 'success'
+                    : proximaReserva.estado === 'mudada'
+                    ? 'warning'
+                    : 'default'
+                }
+              />
+            </View>
+
+            <View style={styles.reservaDetails}>
+              <View style={styles.reservaDetail}>
+                <FontAwesome name="users" size={14} color={Theme.colors.textSecondary} />
+                <Text style={styles.reservaDetailText}>
+                  {proximaReserva.participantes.length} participantes
+                </Text>
+              </View>
+              {proximaReserva.invitados.length > 0 && (
+                <View style={styles.reservaDetail}>
+                  <FontAwesome name="user-plus" size={14} color={Theme.colors.textSecondary} />
+                  <Text style={styles.reservaDetailText}>
+                    {proximaReserva.invitados.length} invitados
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.reservaFooter}>
+              <Text style={styles.viewDetails}>Ver detalles</Text>
+              <FontAwesome name="chevron-right" size={12} color={Theme.colors.primary} />
+            </View>
+          </AnimatedCard>
+        </Animated.View>
       )}
 
-      {/* Estado del Minyan */}
+      {/* Minyan Status */}
       {minyanInfo && (
-        <Card style={styles.minyanCard}>
-          <Text style={styles.cardTitleDark}>Minyan</Text>
-          <View style={styles.minyanContent}>
-            <Text style={styles.minyanCount}>{minyanInfo.cantidad}/10</Text>
-            {minyanInfo.completo ? (
-              <Text style={styles.minyanComplete}>Completo</Text>
-            ) : (
-              <Text style={styles.minyanIncomplete}>
-                Faltan {minyanInfo.faltantes}
-              </Text>
-            )}
-          </View>
-        </Card>
+        <Animated.View entering={FadeInDown.duration(400).delay(400)}>
+          <AnimatedCard variant="outlined" style={styles.minyanCard}>
+            <View style={styles.minyanHeader}>
+              <Text style={styles.minyanIcon}>📖</Text>
+              <View style={styles.minyanInfo}>
+                <Text style={styles.minyanTitle}>Minyan</Text>
+                <Text style={styles.minyanSubtitle}>
+                  {minyanInfo.completo ? 'Completo' : `Faltan ${minyanInfo.faltantes}`}
+                </Text>
+              </View>
+              <View style={styles.minyanProgress}>
+                <Text style={styles.minyanCount}>{minyanInfo.cantidad}</Text>
+                <Text style={styles.minyanTotal}>/10</Text>
+              </View>
+            </View>
+            <View style={styles.minyanBar}>
+              <View
+                style={[
+                  styles.minyanBarFill,
+                  {
+                    width: `${Math.min((minyanInfo.cantidad / 10) * 100, 100)}%`,
+                    backgroundColor: minyanInfo.completo
+                      ? Theme.colors.success
+                      : Theme.colors.warning,
+                  },
+                ]}
+              />
+            </View>
+          </AnimatedCard>
+        </Animated.View>
       )}
 
-      {/* Accesos Rapidos */}
-      <View style={styles.quickActions}>
-        <Text style={styles.sectionTitle}>Accesos Rapidos</Text>
+      {/* Quick Actions */}
+      <Animated.View
+        entering={FadeInDown.duration(400).delay(500)}
+        style={styles.quickActionsSection}
+      >
+        <Text style={styles.sectionTitle}>Acceso Rapido</Text>
 
-        <View style={styles.actionsGrid}>
-          <Card
-            style={styles.actionCard}
+        <View style={styles.quickActionsGrid}>
+          <QuickActionCard
+            emoji="📅"
+            title="Habitaciones"
+            subtitle="Ver disponibilidad"
             onPress={() => router.push('/(tabs)/reservas')}
-          >
-            <Text style={styles.actionIcon}>📅</Text>
-            <Text style={styles.actionText}>Ver Habitaciones</Text>
-          </Card>
-
-          <Card
-            style={styles.actionCard}
+            delay={0}
+          />
+          <QuickActionCard
+            emoji="⚽"
+            title="Futbol"
+            subtitle="Domingo"
             onPress={() => router.push('/(tabs)/actividades')}
-          >
-            <Text style={styles.actionIcon}>⚽</Text>
-            <Text style={styles.actionText}>Futbol Domingo</Text>
-          </Card>
-
-          <Card
-            style={styles.actionCard}
+            delay={50}
+          />
+          <QuickActionCard
+            emoji="🥩"
+            title="Asado"
+            subtitle="Inscribirse"
             onPress={() => router.push('/(tabs)/actividades')}
-          >
-            <Text style={styles.actionIcon}>🥩</Text>
-            <Text style={styles.actionText}>Asado Domingo</Text>
-          </Card>
-
-          <Card
-            style={styles.actionCard}
+            delay={100}
+          />
+          <QuickActionCard
+            emoji="👨‍👩‍👧‍👦"
+            title="Familia"
+            subtitle="Mi grupo"
             onPress={() => router.push('/(tabs)/perfil')}
-          >
-            <Text style={styles.actionIcon}>👨‍👩‍👧‍👦</Text>
-            <Text style={styles.actionText}>Mi Familia</Text>
-          </Card>
+            delay={150}
+          />
         </View>
-      </View>
+      </Animated.View>
+
+      {/* Admin Quick Access */}
+      {user?.esAdmin && (
+        <Animated.View entering={FadeInDown.duration(400).delay(600)}>
+          <AnimatedCard
+            variant="filled"
+            color={Theme.colors.errorBackground}
+            onPress={() => router.push('/admin')}
+            style={styles.adminCard}
+          >
+            <View style={styles.adminContent}>
+              <View style={styles.adminIcon}>
+                <FontAwesome name="cog" size={20} color={Theme.colors.error} />
+              </View>
+              <View style={styles.adminText}>
+                <Text style={styles.adminTitle}>Panel de Administracion</Text>
+                <Text style={styles.adminSubtitle}>Gestionar precios, usuarios y mas</Text>
+              </View>
+              <FontAwesome name="chevron-right" size={16} color={Theme.colors.error} />
+            </View>
+          </AnimatedCard>
+        </Animated.View>
+      )}
     </ScrollView>
+  );
+}
+
+function QuickActionCard({
+  emoji,
+  title,
+  subtitle,
+  onPress,
+  delay,
+}: {
+  emoji: string;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+  delay: number;
+}) {
+  return (
+    <Animated.View
+      entering={FadeInRight.duration(300).delay(delay)}
+      style={styles.quickActionWrapper}
+    >
+      <AnimatedCard
+        variant="default"
+        onPress={onPress}
+        style={styles.quickActionCard}
+      >
+        <Text style={styles.quickActionEmoji}>{emoji}</Text>
+        <Text style={styles.quickActionTitle}>{title}</Text>
+        <Text style={styles.quickActionSubtitle}>{subtitle}</Text>
+      </AnimatedCard>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: Theme.colors.background,
   },
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    padding: Theme.spacing.lg,
+    paddingBottom: Theme.spacing.xxxl,
   },
-  greeting: {
-    marginBottom: 20,
+  greetingSection: {
+    marginBottom: Theme.spacing.xl,
+  },
+  greetingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   greetingText: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1F2937',
+    flex: 1,
   },
-  subGreeting: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginTop: 4,
+  greeting: {
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.textSecondary,
+  },
+  userName: {
+    fontSize: Theme.fontSize.xxl,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.text,
+  },
+  userBadges: {
+    flexDirection: 'row',
+    gap: Theme.spacing.sm,
+    marginTop: Theme.spacing.sm,
   },
   shabbatCard: {
-    backgroundColor: '#2563EB',
-    marginBottom: 16,
+    borderRadius: Theme.borderRadius.xl,
+    padding: Theme.spacing.xl,
+    marginBottom: Theme.spacing.lg,
   },
-  cardTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginBottom: 8,
+  shabbatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Theme.spacing.md,
   },
-  cardTitleDark: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginBottom: 8,
+  shabbatBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.xs,
+    borderRadius: Theme.borderRadius.full,
+  },
+  shabbatBadgeText: {
+    color: Theme.colors.white,
+    fontSize: Theme.fontSize.xs,
+    fontWeight: Theme.fontWeight.semibold,
+    letterSpacing: 1,
+  },
+  statusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusDotInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   shabbatDate: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 4,
+    fontSize: 32,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.white,
+    marginBottom: Theme.spacing.xs,
   },
   shabbatArrival: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: Theme.fontSize.md,
+    color: 'rgba(255,255,255,0.8)',
+    marginBottom: Theme.spacing.lg,
   },
   reserveButton: {
-    marginTop: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Theme.colors.white,
+  },
+  closedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.md,
+    alignSelf: 'flex-start',
+  },
+  closedText: {
+    color: Theme.colors.white,
+    fontSize: Theme.fontSize.sm,
   },
   reservaCard: {
-    marginBottom: 16,
+    marginBottom: Theme.spacing.lg,
   },
   reservaHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Theme.spacing.md,
+  },
+  reservaLabel: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  reservaHabitacion: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.text,
+    marginTop: 2,
+  },
+  reservaDetails: {
+    flexDirection: 'row',
+    gap: Theme.spacing.lg,
+    marginBottom: Theme.spacing.md,
+  },
+  reservaDetail: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    gap: Theme.spacing.sm,
   },
-  estadoBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+  reservaDetailText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
   },
-  estadoConfirmada: {
-    backgroundColor: '#D1FAE5',
+  reservaFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: Theme.spacing.xs,
+    paddingTop: Theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Theme.colors.border,
   },
-  estadoMudada: {
-    backgroundColor: '#FEF3C7',
-  },
-  estadoPendiente: {
-    backgroundColor: '#E5E7EB',
-  },
-  estadoText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  habitacionNombre: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
-  participantesLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  invitadosLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 4,
-  },
-  detailsButton: {
-    marginTop: 16,
+  viewDetails: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.primary,
+    fontWeight: Theme.fontWeight.medium,
   },
   minyanCard: {
-    marginBottom: 16,
+    marginBottom: Theme.spacing.xl,
   },
-  minyanContent: {
+  minyanHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    marginBottom: Theme.spacing.md,
+  },
+  minyanIcon: {
+    fontSize: 28,
+    marginRight: Theme.spacing.md,
+  },
+  minyanInfo: {
+    flex: 1,
+  },
+  minyanTitle: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.text,
+  },
+  minyanSubtitle: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+  },
+  minyanProgress: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
   },
   minyanCount: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#1F2937',
+    fontSize: Theme.fontSize.xxl,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.text,
   },
-  minyanComplete: {
-    fontSize: 16,
-    color: '#059669',
-    fontWeight: '600',
+  minyanTotal: {
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.textSecondary,
   },
-  minyanIncomplete: {
-    fontSize: 16,
-    color: '#DC2626',
-    fontWeight: '600',
+  minyanBar: {
+    height: 6,
+    backgroundColor: Theme.colors.border,
+    borderRadius: 3,
+    overflow: 'hidden',
   },
-  quickActions: {
-    marginTop: 8,
+  minyanBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  quickActionsSection: {
+    marginBottom: Theme.spacing.lg,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 12,
+    fontSize: Theme.fontSize.lg,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.text,
+    marginBottom: Theme.spacing.md,
   },
-  actionsGrid: {
+  quickActionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: Theme.spacing.md,
   },
-  actionCard: {
-    width: '47%',
+  quickActionWrapper: {
+    width: (width - Theme.spacing.lg * 2 - Theme.spacing.md) / 2,
+  },
+  quickActionCard: {
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: Theme.spacing.xl,
   },
-  actionIcon: {
+  quickActionEmoji: {
     fontSize: 32,
-    marginBottom: 8,
+    marginBottom: Theme.spacing.sm,
   },
-  actionText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-    textAlign: 'center',
+  quickActionTitle: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.text,
+  },
+  quickActionSubtitle: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  adminCard: {
+    marginTop: Theme.spacing.sm,
+  },
+  adminContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  adminIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Theme.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Theme.spacing.md,
+  },
+  adminText: {
+    flex: 1,
+  },
+  adminTitle: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.errorDark,
+  },
+  adminSubtitle: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.error,
   },
 });
