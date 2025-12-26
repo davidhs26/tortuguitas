@@ -3,7 +3,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useCallback, useMemo, memo } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
 import 'react-native-reanimated';
@@ -12,9 +12,10 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider, useAuth, ReservasProvider } from '@/context';
 import { ToastProvider, BottomSheetModalProvider } from '@/components/ui';
 import { Theme } from '@/constants/Theme';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 export {
-  ErrorBoundary,
+  ErrorBoundary as ExpoErrorBoundary,
 } from 'expo-router';
 
 export const unstable_settings = {
@@ -23,13 +24,30 @@ export const unstable_settings = {
 
 SplashScreen.preventAutoHideAsync();
 
-function RootLayoutNav() {
+// Memoized screen options for better performance
+const screenOptions = {
+  headerStyle: {
+    backgroundColor: Theme.colors.primary,
+  },
+  headerTintColor: Theme.colors.white,
+  headerTitleStyle: {
+    fontWeight: '600' as const,
+  },
+  headerShadowVisible: false,
+  contentStyle: {
+    backgroundColor: Theme.colors.background,
+  },
+  animation: 'slide_from_right' as const,
+};
+
+const RootLayoutNav = memo(function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
-  useEffect(() => {
+  // Memoized navigation handler
+  const handleNavigation = useCallback(() => {
     if (loading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
@@ -39,29 +57,25 @@ function RootLayoutNav() {
     } else if (user && inAuthGroup) {
       router.replace('/(tabs)');
     }
-  }, [user, loading, segments]);
+  }, [user, loading, segments, router]);
+
+  useEffect(() => {
+    handleNavigation();
+  }, [handleNavigation]);
+
+  // Memoized theme value
+  const themeValue = useMemo(
+    () => (colorScheme === 'dark' ? DarkTheme : DefaultTheme),
+    [colorScheme]
+  );
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <ReservasProvider>
-        <BottomSheetModalProvider>
-          <ToastProvider>
-            <Stack
-              screenOptions={{
-                headerStyle: {
-                  backgroundColor: Theme.colors.primary,
-                },
-                headerTintColor: Theme.colors.white,
-                headerTitleStyle: {
-                  fontWeight: '600',
-                },
-                headerShadowVisible: false,
-                contentStyle: {
-                  backgroundColor: Theme.colors.background,
-                },
-                animation: 'slide_from_right',
-              }}
-            >
+    <ThemeProvider value={themeValue}>
+      <ErrorBoundary>
+        <ReservasProvider>
+          <BottomSheetModalProvider>
+            <ToastProvider>
+              <Stack screenOptions={screenOptions}>
               <Stack.Screen name="(auth)" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen
@@ -88,13 +102,30 @@ function RootLayoutNav() {
                   presentation: 'modal',
                 }}
               />
-            </Stack>
-          </ToastProvider>
-        </BottomSheetModalProvider>
-      </ReservasProvider>
+              <Stack.Screen
+                name="configuracion"
+                options={{
+                  title: 'Configuración',
+                  headerBackTitle: 'Volver',
+                  presentation: 'card',
+                }}
+              />
+              <Stack.Screen
+                name="historial"
+                options={{
+                  title: 'Historial de Reservas',
+                  headerBackTitle: 'Volver',
+                  presentation: 'card',
+                }}
+              />
+              </Stack>
+            </ToastProvider>
+          </BottomSheetModalProvider>
+        </ReservasProvider>
+      </ErrorBoundary>
     </ThemeProvider>
   );
-}
+});
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({

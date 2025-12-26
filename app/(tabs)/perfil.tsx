@@ -432,9 +432,57 @@ export default function PerfilScreen() {
         </AnimatedCard>
       </Animated.View>
 
+      {/* Accesos Rápidos */}
+      <Animated.View entering={FadeInDown.delay(500).springify()}>
+        <AnimatedCard style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIconContainer}>
+              <FontAwesome name="th-large" size={16} color={Theme.colors.primary} />
+            </View>
+            <Text style={styles.sectionTitle}>Accesos Rápidos</Text>
+          </View>
+
+          <Pressable
+            style={styles.quickAccessRow}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/historial');
+            }}
+          >
+            <View style={[styles.quickAccessIcon, { backgroundColor: '#DBEAFE' }]}>
+              <FontAwesome name="history" size={16} color="#2563EB" />
+            </View>
+            <View style={styles.quickAccessInfo}>
+              <Text style={styles.quickAccessTitle}>Historial de Reservas</Text>
+              <Text style={styles.quickAccessSubtitle}>Ver todas tus reservas</Text>
+            </View>
+            <FontAwesome name="chevron-right" size={14} color={Theme.colors.textTertiary} />
+          </Pressable>
+
+          <View style={styles.quickAccessDivider} />
+
+          <Pressable
+            style={styles.quickAccessRow}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/configuracion');
+            }}
+          >
+            <View style={[styles.quickAccessIcon, { backgroundColor: '#F3E8FF' }]}>
+              <FontAwesome name="cog" size={16} color="#7C3AED" />
+            </View>
+            <View style={styles.quickAccessInfo}>
+              <Text style={styles.quickAccessTitle}>Configuración</Text>
+              <Text style={styles.quickAccessSubtitle}>Notificaciones y preferencias</Text>
+            </View>
+            <FontAwesome name="chevron-right" size={14} color={Theme.colors.textTertiary} />
+          </Pressable>
+        </AnimatedCard>
+      </Animated.View>
+
       {/* Admin */}
       {user.esAdmin && (
-        <Animated.View entering={FadeInDown.delay(500).springify()}>
+        <Animated.View entering={FadeInDown.delay(600).springify()}>
           <AnimatedCard
             style={styles.adminCard}
             onPress={() => {
@@ -466,7 +514,7 @@ export default function PerfilScreen() {
       )}
 
       {/* Cerrar sesión */}
-      <Animated.View entering={FadeInDown.delay(600).springify()}>
+      <Animated.View entering={FadeInDown.delay(700).springify()}>
         <AnimatedButton
           title="Cerrar Sesión"
           variant="danger"
@@ -752,5 +800,37 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 32,
+  },
+  // Quick Access styles
+  quickAccessRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Theme.spacing.sm,
+  },
+  quickAccessIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Theme.spacing.md,
+  },
+  quickAccessInfo: {
+    flex: 1,
+  },
+  quickAccessTitle: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.medium,
+    color: Theme.colors.text,
+  },
+  quickAccessSubtitle: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  quickAccessDivider: {
+    height: 1,
+    backgroundColor: Theme.colors.border,
+    marginVertical: Theme.spacing.sm,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,15 @@ import { Theme } from '@/constants/Theme';
 import { calcularMinyan } from '@/services/actividades';
 
 const { width } = Dimensions.get('window');
+
+// Sector names constant (outside component to avoid recreation)
+const SECTOR_NAMES: Record<string, string> = {
+  david: 'Sector David',
+  mumi: 'Sector Mumi',
+  tuni: 'Sector Tuni',
+  quincho: 'Quincho',
+  libre: 'Sin asignar',
+};
 
 export default function HomeScreen() {
   const { user } = useAuth();
@@ -79,25 +88,28 @@ export default function HomeScreen() {
     toast.success('Actualizado', 'Datos actualizados correctamente');
   }, []);
 
-  const proximaReserva = misReservas.find(
-    r => r.estado !== 'cancelada' && new Date(r.fechaShabbat) >= new Date()
+  // Memoized computed values
+  const proximaReserva = useMemo(
+    () => misReservas.find(
+      r => r.estado !== 'cancelada' && new Date(r.fechaShabbat) >= new Date()
+    ),
+    [misReservas]
   );
 
-  const shabbatDate = format(addDays(proximoShabbat, 1), "d 'de' MMMM", {
-    locale: es,
-  });
+  const shabbatDate = useMemo(
+    () => format(addDays(proximoShabbat, 1), "d 'de' MMMM", { locale: es }),
+    [proximoShabbat]
+  );
 
-  const llegadaDate = format(proximoShabbat, "EEEE d", {
-    locale: es,
-  });
+  const llegadaDate = useMemo(
+    () => format(proximoShabbat, "EEEE d", { locale: es }),
+    [proximoShabbat]
+  );
 
-  const SECTOR_NAMES: Record<string, string> = {
-    david: 'Sector David',
-    mumi: 'Sector Mumi',
-    tuni: 'Sector Tuni',
-    quincho: 'Quincho',
-    libre: 'Sin asignar',
-  };
+  const userFullName = useMemo(
+    () => `${user?.nombre} ${user?.apellido}`,
+    [user?.nombre, user?.apellido]
+  );
 
   if (initialLoading) {
     return (
@@ -138,7 +150,7 @@ export default function HomeScreen() {
           </View>
           <Pressable onPress={() => router.push('/(tabs)/perfil')}>
             <Avatar
-              name={`${user?.nombre} ${user?.apellido}`}
+              name={userFullName}
               size="large"
               color={Theme.colors.primary}
             />
@@ -352,7 +364,8 @@ export default function HomeScreen() {
   );
 }
 
-function QuickActionCard({
+// Memoized QuickActionCard for better performance
+const QuickActionCard = memo(function QuickActionCard({
   emoji,
   title,
   subtitle,
@@ -381,7 +394,7 @@ function QuickActionCard({
       </AnimatedCard>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

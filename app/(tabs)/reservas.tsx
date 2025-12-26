@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,12 @@ import {
   RefreshControl,
   Alert,
   Pressable,
+  TextInput,
 } from 'react-native';
 import Animated, {
   FadeInDown,
   FadeInRight,
+  FadeInUp,
   useAnimatedStyle,
   withSpring,
   useSharedValue,
@@ -33,6 +35,9 @@ import {
 } from '@/components/ui';
 import { Habitacion, Sector } from '@/types';
 import { Theme } from '@/constants/Theme';
+
+type FilterOption = 'todos' | Sector;
+type DisponibilidadFilter = 'todas' | 'disponibles' | 'ocupadas';
 
 const SECTOR_COLORS: Record<Sector, string> = {
   david: '#3B82F6',
@@ -85,6 +90,10 @@ export default function ReservasScreen() {
   const [selectedHabitacion, setSelectedHabitacion] = useState<Habitacion | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sectorFilter, setSectorFilter] = useState<FilterOption>('todos');
+  const [disponibilidadFilter, setDisponibilidadFilter] = useState<DisponibilidadFilter>('todas');
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -188,13 +197,59 @@ export default function ReservasScreen() {
     return edad;
   };
 
-  const habitacionesPorSector = habitaciones.reduce((acc, hab) => {
-    if (!acc[hab.sector]) {
-      acc[hab.sector] = [];
-    }
-    acc[hab.sector].push(hab);
-    return acc;
-  }, {} as Record<Sector, Habitacion[]>);
+  // Filtrar habitaciones basado en búsqueda y filtros
+  const habitacionesFiltradas = useMemo(() => {
+    return habitaciones.filter(hab => {
+      // Filtro de búsqueda
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const matchNombre = hab.nombre.toLowerCase().includes(query);
+        const matchConfig = hab.configuracion.toLowerCase().includes(query);
+        if (!matchNombre && !matchConfig) return false;
+      }
+
+      // Filtro de sector
+      if (sectorFilter !== 'todos' && hab.sector !== sectorFilter) {
+        return false;
+      }
+
+      // Filtro de disponibilidad
+      if (disponibilidadFilter !== 'todas') {
+        const disp = disponibilidad.find(d => d.habitacionId === hab.id);
+        const estaDisponible = disp?.disponible ?? true;
+        if (disponibilidadFilter === 'disponibles' && !estaDisponible) return false;
+        if (disponibilidadFilter === 'ocupadas' && estaDisponible) return false;
+      }
+
+      return true;
+    });
+  }, [habitaciones, searchQuery, sectorFilter, disponibilidadFilter, disponibilidad]);
+
+  const habitacionesPorSector = useMemo(() => {
+    return habitacionesFiltradas.reduce((acc, hab) => {
+      if (!acc[hab.sector]) {
+        acc[hab.sector] = [];
+      }
+      acc[hab.sector].push(hab);
+      return acc;
+    }, {} as Record<Sector, Habitacion[]>);
+  }, [habitacionesFiltradas]);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (searchQuery.trim()) count++;
+    if (sectorFilter !== 'todos') count++;
+    if (disponibilidadFilter !== 'todas') count++;
+    return count;
+  }, [searchQuery, sectorFilter, disponibilidadFilter]);
+
+  const clearFilters = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSearchQuery('');
+    setSectorFilter('todos');
+    setDisponibilidadFilter('todas');
+    showToast('Filtros limpiados', 'info');
+  }, []);
 
   const getMarkedDates = () => {
     const marked: Record<string, any> = {};
@@ -320,6 +375,137 @@ export default function ReservasScreen() {
               firstDay={0}
             />
           </AnimatedCard>
+        </Animated.View>
+      )}
+
+      {/* Barra de búsqueda y filtros */}
+      <Animated.View entering={FadeInDown.delay(150).springify()}>
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputContainer}>
+            <FontAwesome name="search" size={16} color={Theme.colors.textSecondary} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar habitación..."
+              placeholderTextColor={Theme.colors.textTertiary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setSearchQuery('');
+                }}
+              >
+                <FontAwesome name="times-circle" size={16} color={Theme.colors.textSecondary} />
+              </Pressable>
+            )}
+          </View>
+          <Pressable
+            style={[styles.filterToggle, showFilters && styles.filterToggleActive]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowFilters(!showFilters);
+            }}
+          >
+            <FontAwesome
+              name="sliders"
+              size={18}
+              color={showFilters ? Theme.colors.primary : Theme.colors.textSecondary}
+            />
+            {activeFiltersCount > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+              </View>
+            )}
+          </Pressable>
+        </View>
+      </Animated.View>
+
+      {/* Panel de filtros expandible */}
+      {showFilters && (
+        <Animated.View entering={FadeInUp.springify()}>
+          <AnimatedCard style={styles.filtersCard}>
+            <View style={styles.filterSection}>
+              <Text style={styles.filterLabel}>Sector</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.filterChips}>
+                  {(['todos', 'david', 'mumi', 'tuni', 'quincho', 'libre'] as FilterOption[]).map(
+                    sector => (
+                      <Pressable
+                        key={sector}
+                        style={[
+                          styles.filterChip,
+                          sectorFilter === sector && styles.filterChipActive,
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSectorFilter(sector);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.filterChipText,
+                            sectorFilter === sector && styles.filterChipTextActive,
+                          ]}
+                        >
+                          {sector === 'todos' ? 'Todos' : SECTOR_NAMES[sector as Sector]}
+                        </Text>
+                      </Pressable>
+                    )
+                  )}
+                </View>
+              </ScrollView>
+            </View>
+
+            <View style={styles.filterSection}>
+              <Text style={styles.filterLabel}>Disponibilidad</Text>
+              <View style={styles.filterChips}>
+                {(['todas', 'disponibles', 'ocupadas'] as DisponibilidadFilter[]).map(disp => (
+                  <Pressable
+                    key={disp}
+                    style={[
+                      styles.filterChip,
+                      disponibilidadFilter === disp && styles.filterChipActive,
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setDisponibilidadFilter(disp);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        disponibilidadFilter === disp && styles.filterChipTextActive,
+                      ]}
+                    >
+                      {disp.charAt(0).toUpperCase() + disp.slice(1)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            {activeFiltersCount > 0 && (
+              <Pressable style={styles.clearFiltersButton} onPress={clearFilters}>
+                <FontAwesome name="times" size={14} color={Theme.colors.error} />
+                <Text style={styles.clearFiltersText}>Limpiar filtros</Text>
+              </Pressable>
+            )}
+          </AnimatedCard>
+        </Animated.View>
+      )}
+
+      {/* Resultados de búsqueda */}
+      {activeFiltersCount > 0 && (
+        <Animated.View entering={FadeInDown.springify()}>
+          <View style={styles.resultsInfo}>
+            <Text style={styles.resultsText}>
+              {habitacionesFiltradas.length} habitación
+              {habitacionesFiltradas.length !== 1 ? 'es' : ''} encontrada
+              {habitacionesFiltradas.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
         </Animated.View>
       )}
 
@@ -667,5 +853,118 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 32,
+  },
+  // Search and Filters styles
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
+    marginBottom: Theme.spacing.md,
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
+    backgroundColor: Theme.colors.surface,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.text,
+    paddingVertical: Theme.spacing.xs,
+  },
+  filterToggle: {
+    width: 44,
+    height: 44,
+    borderRadius: Theme.borderRadius.lg,
+    backgroundColor: Theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  filterToggleActive: {
+    backgroundColor: Theme.colors.primaryLight,
+    borderColor: Theme.colors.primary,
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBadgeText: {
+    fontSize: 10,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.white,
+  },
+  filtersCard: {
+    marginBottom: Theme.spacing.md,
+  },
+  filterSection: {
+    marginBottom: Theme.spacing.md,
+  },
+  filterLabel: {
+    fontSize: Theme.fontSize.sm,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.textSecondary,
+    marginBottom: Theme.spacing.sm,
+  },
+  filterChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Theme.spacing.sm,
+  },
+  filterChip: {
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.full,
+    backgroundColor: Theme.colors.backgroundSecondary,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+  },
+  filterChipActive: {
+    backgroundColor: Theme.colors.primaryLight,
+    borderColor: Theme.colors.primary,
+  },
+  filterChipText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+    fontWeight: Theme.fontWeight.medium,
+  },
+  filterChipTextActive: {
+    color: Theme.colors.primary,
+  },
+  clearFiltersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.sm,
+    marginTop: Theme.spacing.sm,
+  },
+  clearFiltersText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.error,
+    fontWeight: Theme.fontWeight.medium,
+  },
+  resultsInfo: {
+    marginBottom: Theme.spacing.md,
+  },
+  resultsText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+    fontStyle: 'italic',
   },
 });
