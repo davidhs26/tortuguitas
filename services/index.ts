@@ -6,3 +6,4 @@ export * from './reservas';
 export * from './actividades';
 export * from './pagos';
 export * from './notificaciones';
+export * from './familia';

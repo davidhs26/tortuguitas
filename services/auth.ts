@@ -9,6 +9,7 @@ import {
 import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { Usuario, RegisterFormData, NivelPrioridad, Sector } from '@/types';
+import { buscarInfoFamiliar } from './familia';
 
 // Crear nuevo usuario
 export async function registerUser(data: RegisterFormData): Promise<Usuario> {
@@ -23,6 +24,19 @@ export async function registerUser(data: RegisterFormData): Promise<Usuario> {
     displayName: `${nombre} ${apellido}`,
   });
 
+  // Intentar detectar sector y prioridad basado en el nombre
+  let grupoFamiliar: Sector = 'libre';
+  let prioridadNivel: NivelPrioridad = 3;
+  let esAdmin = false;
+
+  const miembroFamilia = buscarInfoFamiliar(nombre, apellido);
+  if (miembroFamilia) {
+    grupoFamiliar = miembroFamilia.sector;
+    prioridadNivel = miembroFamilia.nivel;
+    // Los socios (nivel 1) son administradores
+    esAdmin = miembroFamilia.nivel === 1;
+  }
+
   // Crear documento de usuario en Firestore
   const usuario: Usuario = {
     id: firebaseUser.uid,
@@ -31,11 +45,11 @@ export async function registerUser(data: RegisterFormData): Promise<Usuario> {
     apellido,
     fechaNacimiento: new Date(fechaNacimiento),
     genero,
-    grupoFamiliar: 'libre' as Sector, // Admin asignará el grupo correcto
-    prioridadNivel: 3 as NivelPrioridad, // Por defecto nivel más bajo, admin ajustará
+    grupoFamiliar,
+    prioridadNivel,
     historialAsistencias: [],
     familia: [],
-    esAdmin: false,
+    esAdmin,
     telefono,
     createdAt: new Date(),
     updatedAt: new Date(),
