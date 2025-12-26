@@ -1,19 +1,38 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
   Alert,
+  Pressable,
 } from 'react-native';
+import Animated, {
+  FadeInDown,
+  FadeInRight,
+  useAnimatedStyle,
+  withSpring,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { Calendar, DateData } from 'react-native-calendars';
-import { format, addDays, startOfWeek, getDay } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { format, addDays, getDay } from 'date-fns';
+import { FontAwesome } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { useAuth, useReservas } from '@/context';
-import { Button, Card } from '@/components/ui';
+import {
+  AnimatedCard,
+  AnimatedButton,
+  Badge,
+  StatusBadge,
+  Avatar,
+  EmptyState,
+  SkeletonHabitacion,
+  useToast,
+} from '@/components/ui';
 import { Habitacion, Sector } from '@/types';
+import { Theme } from '@/constants/Theme';
 
 const SECTOR_COLORS: Record<Sector, string> = {
   david: '#3B82F6',
@@ -21,6 +40,14 @@ const SECTOR_COLORS: Record<Sector, string> = {
   tuni: '#F59E0B',
   quincho: '#8B5CF6',
   libre: '#EC4899',
+};
+
+const SECTOR_GRADIENTS: Record<Sector, string[]> = {
+  david: ['#3B82F6', '#1D4ED8'],
+  mumi: ['#10B981', '#059669'],
+  tuni: ['#F59E0B', '#D97706'],
+  quincho: ['#8B5CF6', '#7C3AED'],
+  libre: ['#EC4899', '#DB2777'],
 };
 
 const SECTOR_NAMES: Record<Sector, string> = {
@@ -31,6 +58,14 @@ const SECTOR_NAMES: Record<Sector, string> = {
   libre: 'Libre',
 };
 
+const SECTOR_ICONS: Record<Sector, keyof typeof FontAwesome.glyphMap> = {
+  david: 'home',
+  mumi: 'home',
+  tuni: 'home',
+  quincho: 'cutlery',
+  libre: 'users',
+};
+
 export default function ReservasScreen() {
   const { user } = useAuth();
   const {
@@ -38,7 +73,6 @@ export default function ReservasScreen() {
     disponibilidad,
     proximoShabbat,
     puedeReservar,
-    puedeInvitar,
     cargarHabitaciones,
     cargarDisponibilidad,
     hacerReserva,
@@ -50,6 +84,8 @@ export default function ReservasScreen() {
   );
   const [selectedHabitacion, setSelectedHabitacion] = useState<Habitacion | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const { showToast } = useToast();
 
   useEffect(() => {
     loadData();
@@ -60,51 +96,51 @@ export default function ReservasScreen() {
     await cargarDisponibilidad(proximoShabbat);
   };
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await loadData();
     setRefreshing(false);
-  };
+    showToast('Datos actualizados', 'success');
+  }, []);
 
   const handleDateSelect = (date: DateData) => {
-    // Solo permitir seleccionar viernes
     const selectedDateObj = new Date(date.dateString);
     if (getDay(selectedDateObj) === 5) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setSelectedDate(date.dateString);
       cargarDisponibilidad(selectedDateObj);
+      setShowCalendar(false);
+      showToast(`Shabbat ${format(selectedDateObj, 'dd MMM')} seleccionado`, 'info');
     } else {
-      Alert.alert('Info', 'Solo puedes seleccionar viernes para las reservas de Shabbat');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      showToast('Solo puedes seleccionar viernes', 'warning');
     }
   };
 
   const handleReservar = async (habitacion: Habitacion) => {
     if (!user) {
-      Alert.alert('Error', 'Debes iniciar sesión para hacer una reserva');
+      showToast('Debes iniciar sesión', 'error');
       return;
     }
 
     if (!puedeReservar) {
-      Alert.alert(
-        'Reservas cerradas',
-        'Las reservas abren el lunes y cierran el miércoles'
-      );
+      showToast('Reservas cerradas (Lunes a Miércoles)', 'warning');
       return;
     }
 
-    // Verificar si el usuario puede reservar esta habitación
     if (habitacion.sector !== 'libre' && habitacion.sector !== 'quincho') {
       if (user.grupoFamiliar !== habitacion.sector) {
-        Alert.alert(
-          'Sector incorrecto',
-          `Esta habitación pertenece al ${SECTOR_NAMES[habitacion.sector]}. Solo puedes reservar en tu sector (${SECTOR_NAMES[user.grupoFamiliar]}) o en el Quincho.`
-        );
+        showToast(`Solo puedes reservar en ${SECTOR_NAMES[user.grupoFamiliar]}`, 'error');
         return;
       }
     }
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     Alert.alert(
       'Confirmar Reserva',
-      `¿Deseas reservar ${habitacion.nombre}?`,
+      `¿Deseas reservar ${habitacion.nombre} para el Shabbat del ${format(new Date(selectedDate), 'dd/MM/yyyy')}?`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -125,16 +161,16 @@ export default function ReservasScreen() {
                 ]
               );
 
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
               if (result.mudanzas && result.mudanzas.mudanzas.length > 0) {
-                Alert.alert(
-                  'Reserva con Mudanza',
-                  `Tu reserva fue creada. Se realizaron ${result.mudanzas.mudanzas.length} mudanza(s) por prioridad.`
-                );
+                showToast(`Reserva creada con ${result.mudanzas.mudanzas.length} mudanza(s)`, 'success');
               } else {
-                Alert.alert('Reserva Exitosa', 'Tu reserva ha sido creada');
+                showToast('¡Reserva exitosa!', 'success');
               }
             } catch (err: any) {
-              Alert.alert('Error', err.message);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              showToast(err.message, 'error');
             }
           },
         },
@@ -152,7 +188,6 @@ export default function ReservasScreen() {
     return edad;
   };
 
-  // Agrupar habitaciones por sector
   const habitacionesPorSector = habitaciones.reduce((acc, hab) => {
     if (!acc[hab.sector]) {
       acc[hab.sector] = [];
@@ -161,155 +196,277 @@ export default function ReservasScreen() {
     return acc;
   }, {} as Record<Sector, Habitacion[]>);
 
-  // Marcar viernes en el calendario
   const getMarkedDates = () => {
     const marked: Record<string, any> = {};
-    const today = new Date();
 
-    // Marcar próximos 8 viernes
     for (let i = 0; i < 8; i++) {
       const friday = addDays(proximoShabbat, i * 7);
       const dateStr = format(friday, 'yyyy-MM-dd');
       marked[dateStr] = {
         marked: true,
-        dotColor: '#2563EB',
+        dotColor: Theme.colors.primary,
       };
     }
 
-    // Marcar fecha seleccionada
     if (selectedDate) {
       marked[selectedDate] = {
         ...marked[selectedDate],
         selected: true,
-        selectedColor: '#2563EB',
+        selectedColor: Theme.colors.primary,
       };
     }
 
     return marked;
   };
 
+  const totalHabitaciones = habitaciones.length;
+  const habitacionesDisponibles = disponibilidad.filter(d => d.disponible).length;
+  const porcentajeOcupacion = totalHabitaciones > 0
+    ? Math.round(((totalHabitaciones - habitacionesDisponibles) / totalHabitaciones) * 100)
+    : 0;
+
+  if (loading && habitaciones.length === 0) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.loadingContainer}>
+          <SkeletonHabitacion />
+          <SkeletonHabitacion />
+          <SkeletonHabitacion />
+          <SkeletonHabitacion />
+        </View>
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={Theme.colors.primary}
+        />
       }
+      showsVerticalScrollIndicator={false}
     >
-      {/* Calendario */}
-      <Card style={styles.calendarCard}>
-        <Text style={styles.sectionTitle}>Seleccionar Shabbat</Text>
-        <Calendar
-          current={selectedDate}
-          onDayPress={handleDateSelect}
-          markedDates={getMarkedDates()}
-          theme={{
-            todayTextColor: '#2563EB',
-            selectedDayBackgroundColor: '#2563EB',
-            arrowColor: '#2563EB',
-            textDayFontWeight: '500',
-            textMonthFontWeight: '600',
-          }}
-          firstDay={0}
-        />
-      </Card>
-
-      {/* Estado de reservas */}
-      <View style={styles.statusBar}>
-        <View
-          style={[
-            styles.statusIndicator,
-            puedeReservar ? styles.statusOpen : styles.statusClosed,
-          ]}
-        />
-        <Text style={styles.statusText}>
-          {puedeReservar
-            ? 'Reservas abiertas (hasta miércoles)'
-            : 'Reservas cerradas'}
-        </Text>
-      </View>
-
-      {/* Habitaciones por sector */}
-      {Object.entries(habitacionesPorSector).map(([sector, habs]) => (
-        <View key={sector} style={styles.sectorContainer}>
-          <View style={styles.sectorHeader}>
-            <View
-              style={[
-                styles.sectorDot,
-                { backgroundColor: SECTOR_COLORS[sector as Sector] },
-              ]}
-            />
-            <Text style={styles.sectorTitle}>
-              {SECTOR_NAMES[sector as Sector]}
-            </Text>
+      {/* Header con fecha y estado */}
+      <Animated.View entering={FadeInDown.delay(100).springify()}>
+        <LinearGradient
+          colors={[Theme.colors.primary, Theme.colors.primaryDark]}
+          style={styles.headerCard}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.headerContent}>
+            <View style={styles.headerLeft}>
+              <Text style={styles.headerLabel}>Shabbat Seleccionado</Text>
+              <Text style={styles.headerDate}>
+                {format(new Date(selectedDate), 'dd MMMM yyyy')}
+              </Text>
+            </View>
+            <Pressable
+              style={styles.calendarToggle}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowCalendar(!showCalendar);
+              }}
+            >
+              <FontAwesome name="calendar" size={20} color={Theme.colors.white} />
+            </Pressable>
           </View>
 
-          {habs.map(hab => {
-            const disp = disponibilidad.find(d => d.habitacionId === hab.id);
-            const estaDisponible = disp?.disponible ?? true;
+          <View style={styles.statsRow}>
+            <View style={styles.stat}>
+              <Text style={styles.statValue}>{habitacionesDisponibles}</Text>
+              <Text style={styles.statLabel}>Disponibles</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.stat}>
+              <Text style={styles.statValue}>{totalHabitaciones - habitacionesDisponibles}</Text>
+              <Text style={styles.statLabel}>Ocupadas</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.stat}>
+              <Text style={styles.statValue}>{porcentajeOcupacion}%</Text>
+              <Text style={styles.statLabel}>Ocupación</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </Animated.View>
 
-            return (
-              <Card
-                key={hab.id}
-                style={[
-                  styles.habitacionCard,
-                  !estaDisponible && styles.habitacionOcupada,
-                ]}
-                onPress={() => setSelectedHabitacion(hab)}
-              >
-                <View style={styles.habitacionHeader}>
-                  <Text style={styles.habitacionNombre}>{hab.nombre}</Text>
-                  <View
-                    style={[
-                      styles.disponibilidadBadge,
-                      estaDisponible
-                        ? styles.badgeDisponible
-                        : styles.badgeOcupada,
-                    ]}
-                  >
-                    <Text style={styles.disponibilidadText}>
-                      {estaDisponible ? 'Disponible' : 'Ocupada'}
-                    </Text>
-                  </View>
-                </View>
+      {/* Calendario expandible */}
+      {showCalendar && (
+        <Animated.View entering={FadeInDown.springify()}>
+          <AnimatedCard style={styles.calendarCard}>
+            <Calendar
+              current={selectedDate}
+              onDayPress={handleDateSelect}
+              markedDates={getMarkedDates()}
+              theme={{
+                calendarBackground: 'transparent',
+                todayTextColor: Theme.colors.primary,
+                selectedDayBackgroundColor: Theme.colors.primary,
+                selectedDayTextColor: Theme.colors.white,
+                arrowColor: Theme.colors.primary,
+                monthTextColor: Theme.colors.text,
+                textDayFontWeight: '500',
+                textMonthFontWeight: '600',
+                textDayHeaderFontWeight: '500',
+                dayTextColor: Theme.colors.text,
+                textDisabledColor: Theme.colors.textTertiary,
+              }}
+              firstDay={0}
+            />
+          </AnimatedCard>
+        </Animated.View>
+      )}
 
-                <Text style={styles.habitacionConfig}>{hab.configuracion}</Text>
-
-                <View style={styles.capacidadRow}>
-                  <Text style={styles.capacidadItem}>
-                    🛏️ {hab.capacidad.camas} camas
-                  </Text>
-                  {hab.capacidad.colchones > 0 && (
-                    <Text style={styles.capacidadItem}>
-                      🛋️ {hab.capacidad.colchones} colchones
-                    </Text>
-                  )}
-                  {hab.capacidad.cunas > 0 && (
-                    <Text style={styles.capacidadItem}>
-                      👶 {hab.capacidad.cunas} cuna
-                    </Text>
-                  )}
-                </View>
-
-                {estaDisponible && puedeReservar && (
-                  <Button
-                    title="Reservar"
-                    size="small"
-                    onPress={() => handleReservar(hab)}
-                    style={styles.reservarButton}
-                  />
-                )}
-
-                {!estaDisponible && disp?.reserva && (
-                  <Text style={styles.ocupadaPor}>
-                    Reservada por: {disp.reserva.usuarioNombre}
-                  </Text>
-                )}
-              </Card>
-            );
-          })}
+      {/* Estado de reservas */}
+      <Animated.View
+        entering={FadeInDown.delay(200).springify()}
+        style={styles.statusContainer}
+      >
+        <View style={styles.statusCard}>
+          <View style={[
+            styles.statusDot,
+            puedeReservar ? styles.statusOpen : styles.statusClosed,
+          ]} />
+          <Text style={styles.statusText}>
+            {puedeReservar
+              ? 'Reservas abiertas'
+              : 'Reservas cerradas'}
+          </Text>
+          <Text style={styles.statusSubtext}>
+            {puedeReservar
+              ? 'Hasta el miércoles'
+              : 'Abren el lunes'}
+          </Text>
         </View>
-      ))}
+      </Animated.View>
+
+      {/* Habitaciones por sector */}
+      {Object.keys(habitacionesPorSector).length === 0 ? (
+        <EmptyState
+          icon="bed"
+          title="No hay habitaciones"
+          description="Aún no se han configurado las habitaciones disponibles"
+        />
+      ) : (
+        Object.entries(habitacionesPorSector).map(([sector, habs], sectorIndex) => (
+          <Animated.View
+            key={sector}
+            entering={FadeInDown.delay(300 + sectorIndex * 100).springify()}
+          >
+            <View style={styles.sectorHeader}>
+              <LinearGradient
+                colors={SECTOR_GRADIENTS[sector as Sector]}
+                style={styles.sectorIcon}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <FontAwesome
+                  name={SECTOR_ICONS[sector as Sector]}
+                  size={16}
+                  color={Theme.colors.white}
+                />
+              </LinearGradient>
+              <Text style={styles.sectorTitle}>
+                {SECTOR_NAMES[sector as Sector]}
+              </Text>
+              <Badge
+                label={`${habs.length}`}
+                variant="default"
+                size="small"
+              />
+            </View>
+
+            {habs.map((hab, habIndex) => {
+              const disp = disponibilidad.find(d => d.habitacionId === hab.id);
+              const estaDisponible = disp?.disponible ?? true;
+
+              return (
+                <Animated.View
+                  key={hab.id}
+                  entering={FadeInRight.delay(400 + sectorIndex * 100 + habIndex * 50).springify()}
+                >
+                  <AnimatedCard
+                    variant={estaDisponible ? 'default' : 'outlined'}
+                    style={[
+                      styles.habitacionCard,
+                      !estaDisponible && styles.habitacionOcupada,
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setSelectedHabitacion(hab);
+                    }}
+                  >
+                    <View style={styles.habitacionHeader}>
+                      <View style={styles.habitacionInfo}>
+                        <Text style={styles.habitacionNombre}>{hab.nombre}</Text>
+                        <Text style={styles.habitacionConfig}>{hab.configuracion}</Text>
+                      </View>
+                      <StatusBadge
+                        status={estaDisponible ? 'success' : 'error'}
+                        label={estaDisponible ? 'Disponible' : 'Ocupada'}
+                      />
+                    </View>
+
+                    <View style={styles.capacidadRow}>
+                      <View style={styles.capacidadItem}>
+                        <FontAwesome name="bed" size={14} color={Theme.colors.textSecondary} />
+                        <Text style={styles.capacidadText}>{hab.capacidad.camas} camas</Text>
+                      </View>
+                      {hab.capacidad.colchones > 0 && (
+                        <View style={styles.capacidadItem}>
+                          <FontAwesome name="square" size={14} color={Theme.colors.textSecondary} />
+                          <Text style={styles.capacidadText}>{hab.capacidad.colchones} colchones</Text>
+                        </View>
+                      )}
+                      {hab.capacidad.cunas > 0 && (
+                        <View style={styles.capacidadItem}>
+                          <FontAwesome name="child" size={14} color={Theme.colors.textSecondary} />
+                          <Text style={styles.capacidadText}>{hab.capacidad.cunas} cuna</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {!estaDisponible && disp?.reserva && (
+                      <View style={styles.ocupadaInfo}>
+                        <Avatar name={disp.reserva.usuarioNombre} size="small" />
+                        <Text style={styles.ocupadaPor}>
+                          Reservada por {disp.reserva.usuarioNombre}
+                        </Text>
+                      </View>
+                    )}
+
+                    {estaDisponible && puedeReservar && (
+                      <AnimatedButton
+                        title="Reservar"
+                        variant="primary"
+                        size="small"
+                        icon="check"
+                        onPress={() => handleReservar(hab)}
+                        style={styles.reservarButton}
+                      />
+                    )}
+
+                    {estaDisponible && !puedeReservar && (
+                      <View style={styles.closedInfo}>
+                        <FontAwesome name="lock" size={12} color={Theme.colors.textTertiary} />
+                        <Text style={styles.closedText}>Reservas cerradas</Text>
+                      </View>
+                    )}
+                  </AnimatedCard>
+                </Animated.View>
+              );
+            })}
+          </Animated.View>
+        ))
+      )}
+
+      <View style={styles.bottomSpacer} />
     </ScrollView>
   );
 }
@@ -317,118 +474,198 @@ export default function ReservasScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: Theme.colors.background,
   },
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    padding: Theme.spacing.md,
   },
-  calendarCard: {
-    marginBottom: 16,
+  loadingContainer: {
+    gap: Theme.spacing.md,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 12,
+  headerCard: {
+    borderRadius: Theme.borderRadius.xl,
+    padding: Theme.spacing.lg,
+    marginBottom: Theme.spacing.md,
   },
-  statusBar: {
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Theme.spacing.lg,
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  headerLabel: {
+    fontSize: Theme.fontSize.sm,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: Theme.spacing.xs,
+  },
+  headerDate: {
+    fontSize: Theme.fontSize.xl,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.white,
+  },
+  calendarToggle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
-    paddingHorizontal: 4,
+    justifyContent: 'space-around',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: Theme.borderRadius.lg,
+    padding: Theme.spacing.md,
   },
-  statusIndicator: {
+  stat: {
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: Theme.fontSize.xxl,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.white,
+  },
+  statLabel: {
+    fontSize: Theme.fontSize.xs,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 2,
+  },
+  statDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  calendarCard: {
+    marginBottom: Theme.spacing.md,
+    padding: Theme.spacing.sm,
+  },
+  statusContainer: {
+    marginBottom: Theme.spacing.lg,
+  },
+  statusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Theme.colors.surface,
+    padding: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.lg,
+    ...Theme.shadows.sm,
+  },
+  statusDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    marginRight: 8,
+    marginRight: Theme.spacing.sm,
   },
   statusOpen: {
-    backgroundColor: '#10B981',
+    backgroundColor: Theme.colors.success,
   },
   statusClosed: {
-    backgroundColor: '#EF4444',
+    backgroundColor: Theme.colors.error,
   },
   statusText: {
-    fontSize: 14,
-    color: '#6B7280',
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.text,
+    flex: 1,
   },
-  sectorContainer: {
-    marginBottom: 24,
+  statusSubtext: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
   },
   sectorHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: Theme.spacing.md,
+    marginTop: Theme.spacing.md,
   },
-  sectorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 8,
+  sectorIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Theme.spacing.sm,
   },
   sectorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontSize: Theme.fontSize.lg,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.text,
+    flex: 1,
   },
   habitacionCard: {
-    marginBottom: 12,
+    marginBottom: Theme.spacing.sm,
   },
   habitacionOcupada: {
-    opacity: 0.7,
+    opacity: 0.75,
   },
   habitacionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    alignItems: 'flex-start',
+    marginBottom: Theme.spacing.sm,
+  },
+  habitacionInfo: {
+    flex: 1,
+    marginRight: Theme.spacing.sm,
   },
   habitacionNombre: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    flex: 1,
-  },
-  disponibilidadBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  badgeDisponible: {
-    backgroundColor: '#D1FAE5',
-  },
-  badgeOcupada: {
-    backgroundColor: '#FEE2E2',
-  },
-  disponibilidadText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.text,
+    marginBottom: 2,
   },
   habitacionConfig: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 8,
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
   },
   capacidadRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 8,
+    gap: Theme.spacing.md,
+    marginBottom: Theme.spacing.sm,
   },
   capacidadItem: {
-    fontSize: 13,
-    color: '#374151',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.xs,
   },
-  reservarButton: {
-    marginTop: 8,
+  capacidadText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+  },
+  ocupadaInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
+    marginTop: Theme.spacing.sm,
+    paddingTop: Theme.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Theme.colors.border,
   },
   ocupadaPor: {
-    fontSize: 13,
-    color: '#6B7280',
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
     fontStyle: 'italic',
-    marginTop: 8,
+  },
+  reservarButton: {
+    marginTop: Theme.spacing.md,
+  },
+  closedInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.xs,
+    marginTop: Theme.spacing.sm,
+  },
+  closedText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textTertiary,
+  },
+  bottomSpacer: {
+    height: 32,
   },
 });

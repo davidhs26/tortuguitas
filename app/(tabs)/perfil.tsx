@@ -5,20 +5,56 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
-  TouchableOpacity,
+  Pressable,
 } from 'react-native';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { FontAwesome } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { useAuth, useReservas } from '@/context';
-import { Button, Card, Input } from '@/components/ui';
+import {
+  AnimatedButton,
+  AnimatedCard,
+  Input,
+  Avatar,
+  Badge,
+  StatusBadge,
+  useToast,
+  Skeleton,
+} from '@/components/ui';
+import { Theme } from '@/constants/Theme';
 import { updateUsuario } from '@/services/auth';
 import { FamiliarDependiente, Genero } from '@/types';
+
+const SECTOR_COLORS: Record<string, string[]> = {
+  david: ['#3B82F6', '#1D4ED8'],
+  mumi: ['#10B981', '#059669'],
+  tuni: ['#F59E0B', '#D97706'],
+  quincho: ['#8B5CF6', '#7C3AED'],
+  libre: ['#6B7280', '#4B5563'],
+};
+
+const SECTOR_NAMES: Record<string, string> = {
+  david: 'Sector David',
+  mumi: 'Sector Mumi',
+  tuni: 'Sector Tuni',
+  quincho: 'Quincho',
+  libre: 'Sin asignar',
+};
+
+const PRIORIDAD_NAMES: Record<number, string> = {
+  1: 'Socio',
+  2: 'Hijo de socio',
+  3: 'Nieto',
+};
 
 export default function PerfilScreen() {
   const { user, signOut } = useAuth();
   const { misReservas } = useReservas();
+  const { showToast } = useToast();
 
   const [editando, setEditando] = useState(false);
   const [telefono, setTelefono] = useState(user?.telefono || '');
@@ -30,10 +66,11 @@ export default function PerfilScreen() {
   });
 
   const handleSignOut = () => {
-    Alert.alert('Cerrar Sesion', '¿Estas seguro que deseas cerrar sesion?', [
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert('Cerrar Sesión', '¿Estás seguro que deseas cerrar sesión?', [
       { text: 'Cancelar', style: 'cancel' },
       {
-        text: 'Cerrar Sesion',
+        text: 'Cerrar Sesión',
         style: 'destructive',
         onPress: async () => {
           await signOut();
@@ -46,12 +83,15 @@ export default function PerfilScreen() {
   const handleGuardarTelefono = async () => {
     if (!user) return;
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
     try {
       await updateUsuario(user.id, { telefono });
       setEditando(false);
-      Alert.alert('Exito', 'Telefono actualizado');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast('Teléfono actualizado', 'success');
     } catch (err) {
-      Alert.alert('Error', 'No se pudo actualizar el telefono');
+      showToast('Error al actualizar teléfono', 'error');
     }
   };
 
@@ -59,20 +99,19 @@ export default function PerfilScreen() {
     if (!user) return;
 
     if (!nuevoFamiliar.nombre.trim()) {
-      Alert.alert('Error', 'Ingresa el nombre');
+      showToast('Ingresa el nombre', 'warning');
       return;
     }
 
     if (!nuevoFamiliar.fechaNacimiento) {
-      Alert.alert('Error', 'Ingresa la fecha de nacimiento');
+      showToast('Ingresa la fecha de nacimiento', 'warning');
       return;
     }
 
-    // Validar formato de fecha
     const fechaRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
     const match = nuevoFamiliar.fechaNacimiento.match(fechaRegex);
     if (!match) {
-      Alert.alert('Error', 'Formato de fecha invalido. Usa DD/MM/AAAA');
+      showToast('Formato: DD/MM/AAAA', 'error');
       return;
     }
 
@@ -86,15 +125,18 @@ export default function PerfilScreen() {
       genero: nuevoFamiliar.genero,
     };
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     try {
       await updateUsuario(user.id, {
         familia: [...(user.familia || []), familiar],
       });
       setShowFamiliaForm(false);
       setNuevoFamiliar({ nombre: '', fechaNacimiento: '', genero: 'varon' });
-      Alert.alert('Exito', 'Familiar agregado');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast('Familiar agregado', 'success');
     } catch (err) {
-      Alert.alert('Error', 'No se pudo agregar el familiar');
+      showToast('Error al agregar familiar', 'error');
     }
   };
 
@@ -108,245 +150,333 @@ export default function PerfilScreen() {
     return edad;
   };
 
-  const SECTOR_NAMES: Record<string, string> = {
-    david: 'Sector David',
-    mumi: 'Sector Mumi',
-    tuni: 'Sector Tuni',
-    quincho: 'Quincho',
-    libre: 'Sin asignar',
-  };
-
-  const PRIORIDAD_NAMES: Record<number, string> = {
-    1: 'Socio',
-    2: 'Hijo de socio',
-    3: 'Nieto',
-  };
-
   if (!user) {
     return (
-      <View style={styles.container}>
-        <Text>Cargando...</Text>
-      </View>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.loadingContainer}>
+          <Skeleton width={100} height={100} style={styles.avatarSkeleton} />
+          <Skeleton width={200} height={24} />
+          <Skeleton width={150} height={16} />
+        </View>
+      </ScrollView>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header del perfil */}
-      <View style={styles.profileHeader}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {user.nombre.charAt(0)}
-            {user.apellido.charAt(0)}
-          </Text>
-        </View>
-        <Text style={styles.userName}>
-          {user.nombre} {user.apellido}
-        </Text>
-        <Text style={styles.userEmail}>{user.email}</Text>
-
-        <View style={styles.badges}>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>
-              {SECTOR_NAMES[user.grupoFamiliar]}
-            </Text>
-          </View>
-          <View style={[styles.badge, styles.prioridadBadge]}>
-            <Text style={styles.badgeText}>
-              {PRIORIDAD_NAMES[user.prioridadNivel]}
-            </Text>
-          </View>
-          {user.esAdmin && (
-            <View style={[styles.badge, styles.adminBadge]}>
-              <Text style={styles.badgeText}>Admin</Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      {/* Informacion personal */}
-      <Card style={styles.infoCard}>
-        <Text style={styles.sectionTitle}>Informacion Personal</Text>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Fecha de nacimiento</Text>
-          <Text style={styles.infoValue}>
-            {format(user.fechaNacimiento, "d 'de' MMMM, yyyy", { locale: es })}
-          </Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Edad</Text>
-          <Text style={styles.infoValue}>
-            {calcularEdad(user.fechaNacimiento)} años
-          </Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Genero</Text>
-          <Text style={styles.infoValue}>
-            {user.genero === 'varon' ? 'Varon' : 'Mujer'}
-          </Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Telefono</Text>
-          {editando ? (
-            <View style={styles.editRow}>
-              <Input
-                value={telefono}
-                onChangeText={setTelefono}
-                placeholder="+54 11 1234-5678"
-                keyboardType="phone-pad"
-                style={styles.editInput}
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Header con gradiente */}
+      <Animated.View entering={FadeInDown.delay(100).springify()}>
+        <LinearGradient
+          colors={SECTOR_COLORS[user.grupoFamiliar] || SECTOR_COLORS.libre}
+          style={styles.headerGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.profileHeader}>
+            <View style={styles.avatarContainer}>
+              <Avatar
+                name={`${user.nombre} ${user.apellido}`}
+                size="large"
+                style={styles.avatar}
               />
-              <Button
-                title="Guardar"
-                size="small"
-                onPress={handleGuardarTelefono}
-              />
+              {user.esAdmin && (
+                <View style={styles.adminBadgeSmall}>
+                  <FontAwesome name="star" size={12} color={Theme.colors.warning} />
+                </View>
+              )}
             </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.editableRow}
-              onPress={() => setEditando(true)}
-            >
-              <Text style={styles.infoValue}>
-                {user.telefono || 'No registrado'}
-              </Text>
-              <FontAwesome name="pencil" size={14} color="#6B7280" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </Card>
+            <Text style={styles.userName}>
+              {user.nombre} {user.apellido}
+            </Text>
+            <Text style={styles.userEmail}>{user.email}</Text>
 
-      {/* Mi Familia */}
-      <Card style={styles.infoCard}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Mi Familia</Text>
-          <Button
-            title="Agregar"
-            size="small"
-            variant="outline"
-            onPress={() => setShowFamiliaForm(!showFamiliaForm)}
-          />
-        </View>
-
-        {showFamiliaForm && (
-          <View style={styles.familiaForm}>
-            <Input
-              label="Nombre completo"
-              value={nuevoFamiliar.nombre}
-              onChangeText={text =>
-                setNuevoFamiliar({ ...nuevoFamiliar, nombre: text })
-              }
-              placeholder="Nombre del familiar"
-            />
-            <Input
-              label="Fecha de nacimiento"
-              value={nuevoFamiliar.fechaNacimiento}
-              onChangeText={text =>
-                setNuevoFamiliar({ ...nuevoFamiliar, fechaNacimiento: text })
-              }
-              placeholder="DD/MM/AAAA"
-              keyboardType="numeric"
-            />
-            <View style={styles.genderButtons}>
-              <TouchableOpacity
-                style={[
-                  styles.genderButton,
-                  nuevoFamiliar.genero === 'varon' && styles.genderButtonActive,
-                ]}
-                onPress={() =>
-                  setNuevoFamiliar({ ...nuevoFamiliar, genero: 'varon' })
-                }
-              >
-                <Text
-                  style={[
-                    styles.genderText,
-                    nuevoFamiliar.genero === 'varon' && styles.genderTextActive,
-                  ]}
-                >
-                  Varon
+            <View style={styles.badgesRow}>
+              <View style={styles.headerBadge}>
+                <FontAwesome name="home" size={12} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.headerBadgeText}>
+                  {SECTOR_NAMES[user.grupoFamiliar]}
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.genderButton,
-                  nuevoFamiliar.genero === 'mujer' && styles.genderButtonActive,
-                ]}
-                onPress={() =>
-                  setNuevoFamiliar({ ...nuevoFamiliar, genero: 'mujer' })
-                }
-              >
-                <Text
-                  style={[
-                    styles.genderText,
-                    nuevoFamiliar.genero === 'mujer' && styles.genderTextActive,
-                  ]}
-                >
-                  Mujer
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <Button title="Agregar Familiar" onPress={handleAgregarFamiliar} />
-          </View>
-        )}
-
-        {user.familia && user.familia.length > 0 ? (
-          user.familia.map((familiar, idx) => (
-            <View key={familiar.id || idx} style={styles.familiarRow}>
-              <View>
-                <Text style={styles.familiarNombre}>{familiar.nombre}</Text>
-                <Text style={styles.familiarInfo}>
-                  {familiar.genero === 'varon' ? 'Varon' : 'Mujer'} -{' '}
-                  {calcularEdad(new Date(familiar.fechaNacimiento))} años
+              </View>
+              <View style={styles.headerBadge}>
+                <FontAwesome name="user" size={12} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.headerBadgeText}>
+                  {PRIORIDAD_NAMES[user.prioridadNivel]}
                 </Text>
               </View>
             </View>
-          ))
-        ) : (
-          <Text style={styles.emptyText}>No hay familiares registrados</Text>
-        )}
-      </Card>
+          </View>
+        </LinearGradient>
+      </Animated.View>
 
-      {/* Estadisticas */}
-      <Card style={styles.infoCard}>
-        <Text style={styles.sectionTitle}>Estadisticas</Text>
-
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
+      {/* Estadísticas */}
+      <Animated.View entering={FadeInDown.delay(200).springify()}>
+        <View style={styles.statsContainer}>
+          <AnimatedCard style={styles.statCard}>
             <Text style={styles.statNumber}>{misReservas.length}</Text>
             <Text style={styles.statLabel}>Reservas</Text>
-          </View>
-          <View style={styles.statItem}>
+          </AnimatedCard>
+          <AnimatedCard style={styles.statCard}>
             <Text style={styles.statNumber}>
               {user.historialAsistencias?.length || 0}
             </Text>
             <Text style={styles.statLabel}>Shabbatot</Text>
-          </View>
+          </AnimatedCard>
+          <AnimatedCard style={styles.statCard}>
+            <Text style={styles.statNumber}>
+              {user.familia?.length || 0}
+            </Text>
+            <Text style={styles.statLabel}>Familia</Text>
+          </AnimatedCard>
         </View>
-      </Card>
+      </Animated.View>
+
+      {/* Información personal */}
+      <Animated.View entering={FadeInDown.delay(300).springify()}>
+        <AnimatedCard style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIconContainer}>
+              <FontAwesome name="user-circle" size={18} color={Theme.colors.primary} />
+            </View>
+            <Text style={styles.sectionTitle}>Información Personal</Text>
+          </View>
+
+          <View style={styles.infoGrid}>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Fecha de nacimiento</Text>
+              <Text style={styles.infoValue}>
+                {format(user.fechaNacimiento, "d 'de' MMMM, yyyy", { locale: es })}
+              </Text>
+            </View>
+
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Edad</Text>
+              <Text style={styles.infoValue}>
+                {calcularEdad(user.fechaNacimiento)} años
+              </Text>
+            </View>
+
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Género</Text>
+              <Text style={styles.infoValue}>
+                {user.genero === 'varon' ? 'Varón' : 'Mujer'}
+              </Text>
+            </View>
+
+            <View style={styles.infoItem}>
+              <Text style={styles.infoLabel}>Teléfono</Text>
+              {editando ? (
+                <View style={styles.editRow}>
+                  <Input
+                    value={telefono}
+                    onChangeText={setTelefono}
+                    placeholder="+54 11 1234-5678"
+                    keyboardType="phone-pad"
+                    style={styles.editInput}
+                  />
+                  <AnimatedButton
+                    title="Guardar"
+                    variant="primary"
+                    size="small"
+                    onPress={handleGuardarTelefono}
+                  />
+                </View>
+              ) : (
+                <Pressable
+                  style={styles.editableRow}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setEditando(true);
+                  }}
+                >
+                  <Text style={styles.infoValue}>
+                    {user.telefono || 'No registrado'}
+                  </Text>
+                  <View style={styles.editIcon}>
+                    <FontAwesome name="pencil" size={12} color={Theme.colors.primary} />
+                  </View>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        </AnimatedCard>
+      </Animated.View>
+
+      {/* Mi Familia */}
+      <Animated.View entering={FadeInDown.delay(400).springify()}>
+        <AnimatedCard style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIconContainer}>
+              <FontAwesome name="users" size={16} color={Theme.colors.primary} />
+            </View>
+            <Text style={styles.sectionTitle}>Mi Familia</Text>
+            <AnimatedButton
+              title={showFamiliaForm ? 'Cancelar' : 'Agregar'}
+              variant={showFamiliaForm ? 'ghost' : 'outline'}
+              size="small"
+              icon={showFamiliaForm ? 'times' : 'plus'}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowFamiliaForm(!showFamiliaForm);
+              }}
+            />
+          </View>
+
+          {showFamiliaForm && (
+            <Animated.View entering={FadeInUp.springify()} style={styles.familiaForm}>
+              <Input
+                label="Nombre completo"
+                value={nuevoFamiliar.nombre}
+                onChangeText={text =>
+                  setNuevoFamiliar({ ...nuevoFamiliar, nombre: text })
+                }
+                placeholder="Nombre del familiar"
+              />
+              <Input
+                label="Fecha de nacimiento"
+                value={nuevoFamiliar.fechaNacimiento}
+                onChangeText={text =>
+                  setNuevoFamiliar({ ...nuevoFamiliar, fechaNacimiento: text })
+                }
+                placeholder="DD/MM/AAAA"
+                keyboardType="numeric"
+              />
+              <View style={styles.genderButtons}>
+                <Pressable
+                  style={[
+                    styles.genderButton,
+                    nuevoFamiliar.genero === 'varon' && styles.genderButtonActive,
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setNuevoFamiliar({ ...nuevoFamiliar, genero: 'varon' });
+                  }}
+                >
+                  <FontAwesome
+                    name="male"
+                    size={18}
+                    color={nuevoFamiliar.genero === 'varon' ? Theme.colors.primary : Theme.colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.genderText,
+                      nuevoFamiliar.genero === 'varon' && styles.genderTextActive,
+                    ]}
+                  >
+                    Varón
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.genderButton,
+                    nuevoFamiliar.genero === 'mujer' && styles.genderButtonActive,
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setNuevoFamiliar({ ...nuevoFamiliar, genero: 'mujer' });
+                  }}
+                >
+                  <FontAwesome
+                    name="female"
+                    size={18}
+                    color={nuevoFamiliar.genero === 'mujer' ? Theme.colors.primary : Theme.colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.genderText,
+                      nuevoFamiliar.genero === 'mujer' && styles.genderTextActive,
+                    ]}
+                  >
+                    Mujer
+                  </Text>
+                </Pressable>
+              </View>
+              <AnimatedButton
+                title="Agregar Familiar"
+                variant="primary"
+                icon="plus"
+                onPress={handleAgregarFamiliar}
+              />
+            </Animated.View>
+          )}
+
+          {user.familia && user.familia.length > 0 ? (
+            <View style={styles.familiaList}>
+              {user.familia.map((familiar, idx) => (
+                <View key={familiar.id || idx} style={styles.familiarRow}>
+                  <Avatar name={familiar.nombre} size="small" />
+                  <View style={styles.familiarInfo}>
+                    <Text style={styles.familiarNombre}>{familiar.nombre}</Text>
+                    <Text style={styles.familiarDetails}>
+                      {familiar.genero === 'varon' ? 'Varón' : 'Mujer'} •{' '}
+                      {calcularEdad(new Date(familiar.fechaNacimiento))} años
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            !showFamiliaForm && (
+              <View style={styles.emptyFamily}>
+                <FontAwesome name="users" size={32} color={Theme.colors.textTertiary} />
+                <Text style={styles.emptyText}>No hay familiares registrados</Text>
+                <Text style={styles.emptySubtext}>
+                  Agrega familiares para incluirlos en tus reservas
+                </Text>
+              </View>
+            )
+          )}
+        </AnimatedCard>
+      </Animated.View>
 
       {/* Admin */}
       {user.esAdmin && (
-        <Card style={styles.infoCard}>
-          <Text style={styles.sectionTitle}>Administracion</Text>
-          <Button
-            title="Panel de Admin"
-            onPress={() => router.push('/admin')}
-            style={styles.adminButton}
-          />
-        </Card>
+        <Animated.View entering={FadeInDown.delay(500).springify()}>
+          <AnimatedCard
+            style={styles.adminCard}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push('/admin');
+            }}
+          >
+            <LinearGradient
+              colors={['#FEF3C7', '#FDE68A']}
+              style={styles.adminGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.adminContent}>
+                <View style={styles.adminIconContainer}>
+                  <FontAwesome name="cog" size={24} color="#D97706" />
+                </View>
+                <View style={styles.adminInfo}>
+                  <Text style={styles.adminTitle}>Panel de Administración</Text>
+                  <Text style={styles.adminSubtitle}>
+                    Gestionar reservas y usuarios
+                  </Text>
+                </View>
+                <FontAwesome name="chevron-right" size={16} color="#D97706" />
+              </View>
+            </LinearGradient>
+          </AnimatedCard>
+        </Animated.View>
       )}
 
-      {/* Cerrar sesion */}
-      <Button
-        title="Cerrar Sesion"
-        variant="danger"
-        onPress={handleSignOut}
-        style={styles.signOutButton}
-      />
+      {/* Cerrar sesión */}
+      <Animated.View entering={FadeInDown.delay(600).springify()}>
+        <AnimatedButton
+          title="Cerrar Sesión"
+          variant="danger"
+          icon="sign-out"
+          onPress={handleSignOut}
+          style={styles.signOutButton}
+        />
+      </Animated.View>
+
+      <View style={styles.bottomSpacer} />
     </ScrollView>
   );
 }
@@ -354,93 +484,142 @@ export default function PerfilScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: Theme.colors.background,
   },
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingBottom: Theme.spacing.xxxl,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    padding: Theme.spacing.xxl,
+    gap: Theme.spacing.md,
+  },
+  avatarSkeleton: {
+    borderRadius: 50,
+  },
+  headerGradient: {
+    paddingTop: Theme.spacing.xxl,
+    paddingBottom: Theme.spacing.xxl,
+    paddingHorizontal: Theme.spacing.lg,
+    marginBottom: Theme.spacing.lg,
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: 24,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: Theme.spacing.md,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#2563EB',
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  adminBadgeSmall: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Theme.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
-  },
-  avatarText: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    ...Theme.shadows.sm,
   },
   userName: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1F2937',
+    fontSize: Theme.fontSize.xxl,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.white,
   },
   userEmail: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 4,
+    fontSize: Theme.fontSize.sm,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: Theme.spacing.xs,
   },
-  badges: {
+  badgesRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
+    gap: Theme.spacing.sm,
+    marginTop: Theme.spacing.md,
   },
-  badge: {
-    backgroundColor: '#E5E7EB',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+  headerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.xs,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.xs,
+    borderRadius: Theme.borderRadius.full,
   },
-  prioridadBadge: {
-    backgroundColor: '#DBEAFE',
+  headerBadgeText: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.white,
+    fontWeight: Theme.fontWeight.medium,
   },
-  adminBadge: {
-    backgroundColor: '#FEE2E2',
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: Theme.spacing.md,
+    gap: Theme.spacing.sm,
+    marginBottom: Theme.spacing.lg,
   },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
+  statCard: {
+    flex: 1,
+    alignItems: 'center',
+    padding: Theme.spacing.md,
   },
-  infoCard: {
-    marginBottom: 16,
+  statNumber: {
+    fontSize: Theme.fontSize.xxl,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.primary,
+  },
+  statLabel: {
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    marginTop: Theme.spacing.xs,
+  },
+  sectionCard: {
+    marginHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.md,
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: Theme.spacing.md,
+  },
+  sectionIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Theme.colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Theme.spacing.sm,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 12,
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.text,
+    flex: 1,
   },
-  infoRow: {
-    marginBottom: 12,
+  infoGrid: {
+    gap: Theme.spacing.md,
   },
+  infoItem: {},
   infoLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 4,
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
+    marginBottom: Theme.spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   infoValue: {
-    fontSize: 16,
-    color: '#1F2937',
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.text,
+    fontWeight: Theme.fontWeight.medium,
   },
   editRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Theme.spacing.sm,
   },
   editInput: {
     flex: 1,
@@ -449,85 +628,129 @@ const styles = StyleSheet.create({
   editableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: Theme.spacing.sm,
+  },
+  editIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Theme.colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   familiaForm: {
-    backgroundColor: '#F9FAFB',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
+    backgroundColor: Theme.colors.backgroundSecondary,
+    padding: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.lg,
+    marginBottom: Theme.spacing.md,
   },
   genderButtons: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
+    gap: Theme.spacing.sm,
+    marginBottom: Theme.spacing.md,
   },
   genderButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: Theme.spacing.sm,
+    paddingVertical: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: Theme.colors.border,
+    backgroundColor: Theme.colors.surface,
   },
   genderButtonActive: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+    borderColor: Theme.colors.primary,
+    backgroundColor: Theme.colors.primaryLight,
   },
   genderText: {
-    fontSize: 16,
-    color: '#6B7280',
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.textSecondary,
   },
   genderTextActive: {
-    color: '#2563EB',
-    fontWeight: '600',
+    color: Theme.colors.primary,
+    fontWeight: Theme.fontWeight.semibold,
+  },
+  familiaList: {
+    gap: Theme.spacing.sm,
   },
   familiarRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    gap: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  familiarNombre: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#1F2937',
+    borderBottomColor: Theme.colors.border,
   },
   familiarInfo: {
-    fontSize: 14,
-    color: '#6B7280',
+    flex: 1,
+  },
+  familiarNombre: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.medium,
+    color: Theme.colors.text,
+  },
+  familiarDetails: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
     marginTop: 2,
   },
+  emptyFamily: {
+    alignItems: 'center',
+    padding: Theme.spacing.xl,
+  },
   emptyText: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    fontStyle: 'italic',
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.textSecondary,
+    marginTop: Theme.spacing.md,
   },
-  statsRow: {
+  emptySubtext: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textTertiary,
+    marginTop: Theme.spacing.xs,
+    textAlign: 'center',
+  },
+  adminCard: {
+    marginHorizontal: Theme.spacing.md,
+    marginBottom: Theme.spacing.md,
+    padding: 0,
+    overflow: 'hidden',
+  },
+  adminGradient: {
+    padding: Theme.spacing.lg,
+  },
+  adminContent: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  statItem: {
     alignItems: 'center',
   },
-  statNumber: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#2563EB',
+  adminIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(217, 119, 6, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Theme.spacing.md,
   },
-  statLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 4,
+  adminInfo: {
+    flex: 1,
   },
-  adminButton: {
-    marginTop: 8,
+  adminTitle: {
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.semibold,
+    color: '#92400E',
+  },
+  adminSubtitle: {
+    fontSize: Theme.fontSize.sm,
+    color: '#B45309',
+    marginTop: 2,
   },
   signOutButton: {
-    marginTop: 8,
+    marginHorizontal: Theme.spacing.md,
+  },
+  bottomSpacer: {
+    height: 32,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,17 +7,30 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
+import Animated, { FadeInDown, FadeInRight, FadeInUp } from 'react-native-reanimated';
 import { format, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { FontAwesome } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { useAuth, useReservas } from '@/context';
-import { Button, Card } from '@/components/ui';
+import {
+  AnimatedButton,
+  AnimatedCard,
+  Badge,
+  StatusBadge,
+  AvatarGroup,
+  EmptyState,
+  Skeleton,
+  useToast,
+} from '@/components/ui';
 import { Actividad, TipoActividad } from '@/types';
+import { Theme } from '@/constants/Theme';
 import {
   getOCrearActividadesSemana,
   inscribirseActividad,
   desinscribirseActividad,
   armarEquiposFutbol,
-  calcularEstimacionCarne,
   solicitarAsadoNocturno,
 } from '@/services/actividades';
 
@@ -28,16 +41,24 @@ const TIPO_LABELS: Record<TipoActividad, string> = {
   minyan: 'Minyan',
 };
 
-const TIPO_ICONS: Record<TipoActividad, string> = {
-  futbol: '⚽',
-  asado_domingo: '🥩',
-  asado_noche: '🔥',
-  minyan: '📖',
+const TIPO_ICONS: Record<TipoActividad, keyof typeof FontAwesome.glyphMap> = {
+  futbol: 'futbol-o',
+  asado_domingo: 'fire',
+  asado_noche: 'moon-o',
+  minyan: 'book',
+};
+
+const TIPO_GRADIENTS: Record<TipoActividad, string[]> = {
+  futbol: ['#10B981', '#059669'],
+  asado_domingo: ['#F59E0B', '#D97706'],
+  asado_noche: ['#8B5CF6', '#7C3AED'],
+  minyan: ['#3B82F6', '#1D4ED8'],
 };
 
 export default function ActividadesScreen() {
   const { user } = useAuth();
   const { proximoShabbat } = useReservas();
+  const { showToast } = useToast();
 
   const [actividades, setActividades] = useState<Actividad[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,49 +74,60 @@ export default function ActividadesScreen() {
       setActividades(data);
     } catch (err) {
       console.error('Error cargando actividades:', err);
+      showToast('Error al cargar actividades', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await loadActividades();
     setRefreshing(false);
-  };
+    showToast('Actividades actualizadas', 'success');
+  }, []);
 
   const handleInscribirse = async (actividad: Actividad) => {
     if (!user) {
-      Alert.alert('Error', 'Debes iniciar sesion');
+      showToast('Debes iniciar sesión', 'error');
       return;
     }
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     try {
       await inscribirseActividad(actividad.id, user);
-      Alert.alert('Exito', `Te has inscrito en ${TIPO_LABELS[actividad.tipo]}`);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast(`Te inscribiste en ${TIPO_LABELS[actividad.tipo]}`, 'success');
       await loadActividades();
     } catch (err: any) {
-      Alert.alert('Error', err.message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      showToast(err.message, 'error');
     }
   };
 
   const handleDesinscribirse = async (actividad: Actividad) => {
     if (!user) return;
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     Alert.alert(
       'Confirmar',
-      `¿Deseas cancelar tu inscripcion en ${TIPO_LABELS[actividad.tipo]}?`,
+      `¿Deseas cancelar tu inscripción en ${TIPO_LABELS[actividad.tipo]}?`,
       [
         { text: 'No', style: 'cancel' },
         {
-          text: 'Si, cancelar',
+          text: 'Sí, cancelar',
           style: 'destructive',
           onPress: async () => {
             try {
               await desinscribirseActividad(actividad.id, user.id);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              showToast('Inscripción cancelada', 'info');
               await loadActividades();
             } catch (err: any) {
-              Alert.alert('Error', err.message);
+              showToast(err.message, 'error');
             }
           },
         },
@@ -104,27 +136,33 @@ export default function ActividadesScreen() {
   };
 
   const handleArmarEquipos = async (actividad: Actividad) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
     try {
       const equipos = await armarEquiposFutbol(actividad.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast('¡Equipos armados!', 'success');
       Alert.alert(
-        'Equipos Armados',
-        `${equipos[0].nombre}: ${equipos[0].jugadores.join(', ')}\n\n${equipos[1].nombre}: ${equipos[1].jugadores.join(', ')}`
+        '⚽ Equipos',
+        `${equipos[0].nombre}:\n${equipos[0].jugadores.join(', ')}\n\n${equipos[1].nombre}:\n${equipos[1].jugadores.join(', ')}`
       );
       await loadActividades();
     } catch (err: any) {
-      Alert.alert('Error', err.message);
+      showToast(err.message, 'error');
     }
   };
 
   const handleSolicitarAsadoNocturno = async () => {
     if (!user) {
-      Alert.alert('Error', 'Debes iniciar sesion');
+      showToast('Debes iniciar sesión', 'error');
       return;
     }
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     Alert.alert(
       'Solicitar Asado Nocturno',
-      '¿Deseas solicitar un asado nocturno para este viernes? Requiere aprobacion del administrador.',
+      '¿Deseas solicitar un asado nocturno para este viernes? Requiere aprobación del administrador.',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -132,13 +170,11 @@ export default function ActividadesScreen() {
           onPress: async () => {
             try {
               await solicitarAsadoNocturno(proximoShabbat, user.id);
-              Alert.alert(
-                'Solicitud Enviada',
-                'Tu solicitud ha sido enviada al administrador para aprobacion.'
-              );
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              showToast('Solicitud enviada', 'success');
               await loadActividades();
             } catch (err: any) {
-              Alert.alert('Error', err.message);
+              showToast(err.message, 'error');
             }
           },
         },
@@ -152,137 +188,260 @@ export default function ActividadesScreen() {
   };
 
   const domingo = addDays(proximoShabbat, 2);
-  const domingoFormateado = format(domingo, "EEEE d 'de' MMMM", { locale: es });
+
+  // Stats
+  const totalInscritos = actividades.reduce((acc, a) => acc + a.participantes.length, 0);
+  const actividadesActivas = actividades.filter(a => a.tipo !== 'minyan').length;
+
+  if (loading) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.loadingContainer}>
+          <Skeleton width="100%" height={120} style={styles.skeletonHeader} />
+          <Skeleton width="100%" height={180} />
+          <Skeleton width="100%" height={180} />
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={Theme.colors.primary}
+        />
       }
+      showsVerticalScrollIndicator={false}
     >
-      <View style={styles.header}>
-        <Text style={styles.title}>Actividades</Text>
-        <Text style={styles.subtitle}>Domingo {format(domingo, 'd/M')}</Text>
-      </View>
-
-      {actividades
-        .filter(a => a.tipo !== 'minyan')
-        .map(actividad => (
-          <Card key={actividad.id} style={styles.actividadCard}>
-            <View style={styles.actividadHeader}>
-              <Text style={styles.actividadIcon}>
-                {TIPO_ICONS[actividad.tipo]}
+      {/* Header */}
+      <Animated.View entering={FadeInDown.delay(100).springify()}>
+        <LinearGradient
+          colors={[Theme.colors.primary, Theme.colors.primaryDark]}
+          style={styles.headerCard}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.headerLabel}>Actividades</Text>
+              <Text style={styles.headerDate}>
+                Domingo {format(domingo, 'd/M')}
               </Text>
-              <View style={styles.actividadInfo}>
-                <Text style={styles.actividadTitulo}>
-                  {TIPO_LABELS[actividad.tipo]}
-                </Text>
-                <Text style={styles.actividadFecha}>
-                  {format(actividad.fecha, "HH:mm 'hs'")}
-                </Text>
-              </View>
-              {actividad.tipo === 'asado_noche' && !actividad.aprobada && (
-                <View style={styles.pendienteBadge}>
-                  <Text style={styles.pendienteText}>Pendiente</Text>
-                </View>
-              )}
             </View>
-
-            <View style={styles.participantesContainer}>
-              <Text style={styles.participantesLabel}>
-                {actividad.participantes.length} inscrito
-                {actividad.participantes.length !== 1 ? 's' : ''}
-              </Text>
-
-              {actividad.participantes.length > 0 && (
-                <Text style={styles.participantesList}>
-                  {actividad.participantes.map(p => p.nombre).join(', ')}
-                </Text>
-              )}
+            <View style={styles.headerIcon}>
+              <FontAwesome name="calendar-check-o" size={28} color={Theme.colors.white} />
             </View>
+          </View>
 
-            {/* Equipos de futbol */}
-            {actividad.tipo === 'futbol' && actividad.equipos && (
-              <View style={styles.equiposContainer}>
-                {actividad.equipos.map((equipo, idx) => (
-                  <View key={idx} style={styles.equipoCard}>
-                    <Text style={styles.equipoNombre}>{equipo.nombre}</Text>
-                    <Text style={styles.equipoJugadores}>
-                      {equipo.jugadores.join(', ')}
+          <View style={styles.statsRow}>
+            <View style={styles.stat}>
+              <Text style={styles.statValue}>{actividadesActivas}</Text>
+              <Text style={styles.statLabel}>Actividades</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.stat}>
+              <Text style={styles.statValue}>{totalInscritos}</Text>
+              <Text style={styles.statLabel}>Inscripciones</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </Animated.View>
+
+      {/* Lista de actividades */}
+      {actividades.filter(a => a.tipo !== 'minyan').length === 0 ? (
+        <EmptyState
+          icon="calendar"
+          title="No hay actividades"
+          description="Las actividades aparecerán aquí cuando estén disponibles"
+        />
+      ) : (
+        actividades
+          .filter(a => a.tipo !== 'minyan')
+          .map((actividad, index) => (
+            <Animated.View
+              key={actividad.id}
+              entering={FadeInRight.delay(200 + index * 100).springify()}
+            >
+              <AnimatedCard style={styles.actividadCard}>
+                <View style={styles.actividadHeader}>
+                  <LinearGradient
+                    colors={TIPO_GRADIENTS[actividad.tipo]}
+                    style={styles.actividadIconContainer}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <FontAwesome
+                      name={TIPO_ICONS[actividad.tipo]}
+                      size={24}
+                      color={Theme.colors.white}
+                    />
+                  </LinearGradient>
+                  <View style={styles.actividadInfo}>
+                    <Text style={styles.actividadTitulo}>
+                      {TIPO_LABELS[actividad.tipo]}
+                    </Text>
+                    <Text style={styles.actividadFecha}>
+                      {format(actividad.fecha, "HH:mm 'hs'")}
                     </Text>
                   </View>
-                ))}
-              </View>
-            )}
+                  {actividad.tipo === 'asado_noche' && !actividad.aprobada && (
+                    <StatusBadge status="warning" label="Pendiente" />
+                  )}
+                  {isInscrito(actividad) && (
+                    <StatusBadge status="success" label="Inscrito" />
+                  )}
+                </View>
 
-            {/* Estimacion de carne */}
-            {actividad.tipo === 'asado_domingo' && actividad.estimacionCarne && (
-              <View style={styles.estimacionContainer}>
-                <Text style={styles.estimacionLabel}>
-                  Estimacion: {actividad.estimacionCarne} kg de carne
+                <View style={styles.participantesContainer}>
+                  <View style={styles.participantesHeader}>
+                    <FontAwesome name="users" size={14} color={Theme.colors.textSecondary} />
+                    <Text style={styles.participantesLabel}>
+                      {actividad.participantes.length} inscrito{actividad.participantes.length !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+
+                  {actividad.participantes.length > 0 && (
+                    <View style={styles.avatarsRow}>
+                      <AvatarGroup
+                        names={actividad.participantes.map(p => p.nombre)}
+                        max={5}
+                        size="small"
+                      />
+                    </View>
+                  )}
+                </View>
+
+                {/* Equipos de futbol */}
+                {actividad.tipo === 'futbol' && actividad.equipos && (
+                  <Animated.View entering={FadeInUp.springify()} style={styles.equiposContainer}>
+                    {actividad.equipos.map((equipo, idx) => (
+                      <View
+                        key={idx}
+                        style={[
+                          styles.equipoCard,
+                          idx === 0 ? styles.equipoAzul : styles.equipoRojo,
+                        ]}
+                      >
+                        <Text style={styles.equipoNombre}>{equipo.nombre}</Text>
+                        <Text style={styles.equipoJugadores}>
+                          {equipo.jugadores.join(', ')}
+                        </Text>
+                      </View>
+                    ))}
+                  </Animated.View>
+                )}
+
+                {/* Estimacion de carne */}
+                {actividad.tipo === 'asado_domingo' && actividad.estimacionCarne && (
+                  <View style={styles.estimacionContainer}>
+                    <FontAwesome name="fire" size={16} color="#D97706" />
+                    <Text style={styles.estimacionLabel}>
+                      {actividad.estimacionCarne} kg de carne estimados
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.actividadActions}>
+                  {isInscrito(actividad) ? (
+                    <AnimatedButton
+                      title="Cancelar"
+                      variant="outline"
+                      size="small"
+                      icon="times"
+                      onPress={() => handleDesinscribirse(actividad)}
+                      style={styles.actionButton}
+                    />
+                  ) : (
+                    <AnimatedButton
+                      title="Inscribirme"
+                      variant="primary"
+                      size="small"
+                      icon="check"
+                      onPress={() => handleInscribirse(actividad)}
+                      disabled={actividad.tipo === 'asado_noche' && !actividad.aprobada}
+                      style={styles.actionButton}
+                    />
+                  )}
+
+                  {actividad.tipo === 'futbol' &&
+                    user?.esAdmin &&
+                    actividad.participantes.length >= 4 && (
+                      <AnimatedButton
+                        title="Armar Equipos"
+                        variant="secondary"
+                        size="small"
+                        icon="random"
+                        onPress={() => handleArmarEquipos(actividad)}
+                        style={styles.actionButton}
+                      />
+                    )}
+                </View>
+              </AnimatedCard>
+            </Animated.View>
+          ))
+      )}
+
+      {/* Solicitar asado nocturno */}
+      <Animated.View entering={FadeInDown.delay(500).springify()}>
+        <AnimatedCard variant="outlined" style={styles.solicitudCard}>
+          <LinearGradient
+            colors={['#FEF3C7', '#FDE68A']}
+            style={styles.solicitudGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={styles.solicitudHeader}>
+              <View style={styles.solicitudIconContainer}>
+                <FontAwesome name="moon-o" size={24} color="#D97706" />
+              </View>
+              <View style={styles.solicitudInfo}>
+                <Text style={styles.solicitudTitulo}>Asado Nocturno</Text>
+                <Text style={styles.solicitudDescripcion}>
+                  Solicita un asado para el viernes por la noche
                 </Text>
               </View>
-            )}
-
-            <View style={styles.actividadActions}>
-              {isInscrito(actividad) ? (
-                <Button
-                  title="Cancelar Inscripcion"
-                  variant="outline"
-                  size="small"
-                  onPress={() => handleDesinscribirse(actividad)}
-                />
-              ) : (
-                <Button
-                  title="Inscribirme"
-                  size="small"
-                  onPress={() => handleInscribirse(actividad)}
-                  disabled={
-                    actividad.tipo === 'asado_noche' && !actividad.aprobada
-                  }
-                />
-              )}
-
-              {actividad.tipo === 'futbol' &&
-                user?.esAdmin &&
-                actividad.participantes.length >= 4 && (
-                  <Button
-                    title="Armar Equipos"
-                    variant="secondary"
-                    size="small"
-                    onPress={() => handleArmarEquipos(actividad)}
-                    style={styles.secondaryButton}
-                  />
-                )}
             </View>
-          </Card>
-        ))}
+            <AnimatedButton
+              title="Solicitar"
+              variant="outline"
+              size="small"
+              icon="plus"
+              onPress={handleSolicitarAsadoNocturno}
+            />
+          </LinearGradient>
+        </AnimatedCard>
+      </Animated.View>
 
-      {/* Boton para solicitar asado nocturno */}
-      <Card style={styles.solicitudCard}>
-        <Text style={styles.solicitudTitulo}>🔥 Asado Nocturno</Text>
-        <Text style={styles.solicitudDescripcion}>
-          ¿Quieres organizar un asado el viernes por la noche? Requiere
-          aprobacion del administrador.
-        </Text>
-        <Button
-          title="Solicitar Asado Nocturno"
-          variant="outline"
-          onPress={handleSolicitarAsadoNocturno}
-        />
-      </Card>
+      {/* Info */}
+      <Animated.View entering={FadeInDown.delay(600).springify()}>
+        <AnimatedCard variant="filled" style={styles.infoCard}>
+          <View style={styles.infoHeader}>
+            <FontAwesome name="info-circle" size={18} color={Theme.colors.primary} />
+            <Text style={styles.infoTitle}>Información</Text>
+          </View>
+          <View style={styles.infoList}>
+            <View style={styles.infoItem}>
+              <FontAwesome name="clock-o" size={14} color={Theme.colors.textSecondary} />
+              <Text style={styles.infoText}>Inscripciones hasta el miércoles</Text>
+            </View>
+            <View style={styles.infoItem}>
+              <FontAwesome name="cutlery" size={14} color={Theme.colors.textSecondary} />
+              <Text style={styles.infoText}>Asado: 0.5 kg por persona</Text>
+            </View>
+            <View style={styles.infoItem}>
+              <FontAwesome name="futbol-o" size={14} color={Theme.colors.textSecondary} />
+              <Text style={styles.infoText}>Equipos armados aleatoriamente</Text>
+            </View>
+          </View>
+        </AnimatedCard>
+      </Animated.View>
 
-      {/* Info adicional */}
-      <View style={styles.infoSection}>
-        <Text style={styles.infoTitle}>Informacion</Text>
-        <Text style={styles.infoText}>
-          • Las inscripciones cierran el miercoles{'\n'}
-          • El asado del domingo se calcula 0.5 kg por persona{'\n'}
-          • Los equipos de futbol se arman automaticamente
-        </Text>
-      </View>
+      <View style={styles.bottomSpacer} />
     </ScrollView>
   );
 }
@@ -290,144 +449,228 @@ export default function ActividadesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: Theme.colors.background,
   },
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    padding: Theme.spacing.md,
   },
-  header: {
-    marginBottom: 20,
+  loadingContainer: {
+    gap: Theme.spacing.md,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1F2937',
+  skeletonHeader: {
+    borderRadius: Theme.borderRadius.xl,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginTop: 4,
-    textTransform: 'capitalize',
+  headerCard: {
+    borderRadius: Theme.borderRadius.xl,
+    padding: Theme.spacing.lg,
+    marginBottom: Theme.spacing.lg,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Theme.spacing.lg,
+  },
+  headerLabel: {
+    fontSize: Theme.fontSize.sm,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginBottom: Theme.spacing.xs,
+  },
+  headerDate: {
+    fontSize: Theme.fontSize.xxl,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.white,
+  },
+  headerIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: Theme.borderRadius.lg,
+    padding: Theme.spacing.md,
+  },
+  stat: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statValue: {
+    fontSize: Theme.fontSize.xxl,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.white,
+  },
+  statLabel: {
+    fontSize: Theme.fontSize.xs,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 2,
+  },
+  statDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
   actividadCard: {
-    marginBottom: 16,
+    marginBottom: Theme.spacing.md,
   },
   actividadHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: Theme.spacing.md,
   },
-  actividadIcon: {
-    fontSize: 36,
-    marginRight: 12,
+  actividadIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Theme.spacing.md,
   },
   actividadInfo: {
     flex: 1,
   },
   actividadTitulo: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontSize: Theme.fontSize.lg,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.text,
   },
   actividadFecha: {
-    fontSize: 14,
-    color: '#6B7280',
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
     marginTop: 2,
   },
-  pendienteBadge: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  pendienteText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#92400E',
-  },
   participantesContainer: {
-    marginBottom: 12,
+    marginBottom: Theme.spacing.md,
+  },
+  participantesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.xs,
+    marginBottom: Theme.spacing.sm,
   },
   participantesLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+    fontSize: Theme.fontSize.sm,
+    fontWeight: Theme.fontWeight.medium,
+    color: Theme.colors.textSecondary,
   },
-  participantesList: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginTop: 4,
+  avatarsRow: {
+    marginTop: Theme.spacing.xs,
   },
   equiposContainer: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
+    gap: Theme.spacing.sm,
+    marginBottom: Theme.spacing.md,
   },
   equipoCard: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
-    padding: 12,
-    borderRadius: 8,
+    padding: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.md,
+  },
+  equipoAzul: {
+    backgroundColor: '#DBEAFE',
+  },
+  equipoRojo: {
+    backgroundColor: '#FEE2E2',
   },
   equipoNombre: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
+    fontSize: Theme.fontSize.sm,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.text,
+    marginBottom: Theme.spacing.xs,
   },
   equipoJugadores: {
-    fontSize: 12,
-    color: '#6B7280',
+    fontSize: Theme.fontSize.xs,
+    color: Theme.colors.textSecondary,
   },
   estimacionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
     backgroundColor: '#FEF3C7',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
+    padding: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.md,
+    marginBottom: Theme.spacing.md,
   },
   estimacionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: Theme.fontSize.sm,
+    fontWeight: Theme.fontWeight.medium,
     color: '#92400E',
   },
   actividadActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: Theme.spacing.sm,
   },
-  secondaryButton: {
-    marginLeft: 8,
+  actionButton: {
+    flex: 1,
   },
   solicitudCard: {
-    marginTop: 8,
-    marginBottom: 16,
-    backgroundColor: '#FFF7ED',
-    borderWidth: 1,
-    borderColor: '#FDBA74',
+    marginBottom: Theme.spacing.md,
+    padding: 0,
+    overflow: 'hidden',
+  },
+  solicitudGradient: {
+    padding: Theme.spacing.lg,
+  },
+  solicitudHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Theme.spacing.md,
+  },
+  solicitudIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(217, 119, 6, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Theme.spacing.md,
+  },
+  solicitudInfo: {
+    flex: 1,
   },
   solicitudTitulo: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 8,
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.semibold,
+    color: '#92400E',
   },
   solicitudDescripcion: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 16,
+    fontSize: Theme.fontSize.sm,
+    color: '#B45309',
+    marginTop: 2,
   },
-  infoSection: {
-    marginTop: 8,
+  infoCard: {
+    marginBottom: Theme.spacing.md,
+  },
+  infoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
+    marginBottom: Theme.spacing.md,
   },
   infoTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 8,
+    fontSize: Theme.fontSize.md,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.text,
+  },
+  infoList: {
+    gap: Theme.spacing.sm,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
   },
   infoText: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 22,
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textSecondary,
+  },
+  bottomSpacer: {
+    height: 32,
   },
 });
