@@ -95,14 +95,6 @@ const RootLayoutNav = memo(function RootLayoutNav() {
                 }}
               />
               <Stack.Screen
-                name="nueva-reserva"
-                options={{
-                  title: 'Nueva Reserva',
-                  headerBackTitle: 'Cancelar',
-                  presentation: 'modal',
-                }}
-              />
-              <Stack.Screen
                 name="configuracion"
                 options={{
                   title: 'Configuración',

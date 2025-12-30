@@ -14,6 +14,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { FontAwesome } from '@expo/vector-icons';
 import { Theme } from '@/constants/Theme';
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
@@ -25,7 +26,7 @@ interface AnimatedButtonProps {
   size?: 'small' | 'medium' | 'large';
   loading?: boolean;
   disabled?: boolean;
-  icon?: React.ReactNode;
+  icon?: React.ReactNode | string; // Acepta string (nombre de icono) o componente
   iconPosition?: 'left' | 'right';
   fullWidth?: boolean;
   style?: ViewStyle;
@@ -77,6 +78,28 @@ export function AnimatedButton({
   const variantStyles = getVariantStyles(variant);
   const sizeStyles = getSizeStyles(size);
 
+  // Determinar el tamaño del icono según el size del botón
+  const iconSize = size === 'small' ? 14 : size === 'large' ? 20 : 16;
+  
+  // Renderizar el icono: si es string, crear FontAwesome; si es ReactNode, usarlo directamente
+  const renderIcon = () => {
+    if (!icon) return null;
+    
+    if (typeof icon === 'string') {
+      return (
+        <FontAwesome 
+          name={icon as any} 
+          size={iconSize} 
+          color={variantStyles.text.color} 
+        />
+      );
+    }
+    
+    return icon;
+  };
+
+  const iconElement = renderIcon();
+
   return (
     <AnimatedTouchable
       style={[
@@ -101,8 +124,8 @@ export function AnimatedButton({
         />
       ) : (
         <>
-          {icon && iconPosition === 'left' && (
-            <Animated.View style={styles.iconLeft}>{icon}</Animated.View>
+          {iconElement && iconPosition === 'left' && (
+            <Animated.View style={styles.iconLeft}>{iconElement}</Animated.View>
           )}
           <Text
             style={[
@@ -114,8 +137,8 @@ export function AnimatedButton({
           >
             {title}
           </Text>
-          {icon && iconPosition === 'right' && (
-            <Animated.View style={styles.iconRight}>{icon}</Animated.View>
+          {iconElement && iconPosition === 'right' && (
+            <Animated.View style={styles.iconRight}>{iconElement}</Animated.View>
           )}
         </>
       )}

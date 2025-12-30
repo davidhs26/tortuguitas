@@ -29,6 +29,13 @@ import {
 import { Theme } from '@/constants/Theme';
 import { calcularMinyan } from '@/services/actividades';
 
+// Mock minyan info para modo demo
+const MOCK_MINYAN_INFO = {
+  cantidad: 7,
+  completo: false,
+  faltantes: 3,
+};
+
 const { width } = Dimensions.get('window');
 
 // Sector names constant (outside component to avoid recreation)
@@ -41,7 +48,7 @@ const SECTOR_NAMES: Record<string, string> = {
 };
 
 export default function HomeScreen() {
-  const { user } = useAuth();
+  const { user, isDemo } = useAuth();
   const toast = useToast();
   const {
     misReservas,
@@ -63,7 +70,7 @@ export default function HomeScreen() {
     if (user) {
       loadData();
     }
-  }, [user]);
+  }, [user, isDemo]);
 
   const loadData = async () => {
     try {
@@ -72,10 +79,18 @@ export default function HomeScreen() {
         cargarDisponibilidad(proximoShabbat),
       ]);
 
-      const minyan = await calcularMinyan(proximoShabbat);
-      setMinyanInfo(minyan);
+      if (isDemo) {
+        setMinyanInfo(MOCK_MINYAN_INFO);
+      } else {
+        const minyan = await calcularMinyan(proximoShabbat);
+        setMinyanInfo(minyan);
+      }
     } catch (err) {
       console.error('Error cargando datos:', err);
+      // En modo demo, si hay error igual mostramos los datos mock
+      if (isDemo) {
+        setMinyanInfo(MOCK_MINYAN_INFO);
+      }
     } finally {
       setInitialLoading(false);
     }

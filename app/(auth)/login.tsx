@@ -19,7 +19,7 @@ import { AnimatedButton, Input, useToast } from '@/components/ui';
 import { Theme } from '@/constants/Theme';
 
 export default function LoginScreen() {
-  const { signIn, loading, error, clearError } = useAuth();
+  const { signIn, signInDemo, loading, error, clearError } = useAuth();
   const { showToast } = useToast();
 
   const [email, setEmail] = useState('');
@@ -160,6 +160,18 @@ export default function LoginScreen() {
                 <View style={styles.dividerLine} />
               </View>
 
+              <AnimatedButton
+                title="Modo Demo"
+                variant="outline"
+                icon="rocket"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  signInDemo();
+                  router.replace('/(tabs)');
+                }}
+                style={styles.demoButton}
+              />
+
               <View style={styles.footer}>
                 <Text style={styles.footerText}>¿No tienes cuenta? </Text>
                 <Link href="/(auth)/register" asChild>
@@ -299,6 +311,9 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     marginTop: Theme.spacing.sm,
+  },
+  demoButton: {
+    marginBottom: Theme.spacing.md,
   },
   divider: {
     flexDirection: 'row',

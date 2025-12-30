@@ -25,7 +25,7 @@ interface ToastMessage {
 }
 
 interface ToastContextType {
-  showToast: (type: ToastType, title: string, message?: string, duration?: number) => void;
+  showToast: (title: string, type: ToastType, message?: string, duration?: number) => void;
   success: (title: string, message?: string) => void;
   error: (title: string, message?: string) => void;
   warning: (title: string, message?: string) => void;
@@ -38,8 +38,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const showToast = (
-    type: ToastType,
     title: string,
+    type: ToastType,
     message?: string,
     duration: number = 3000
   ) => {
@@ -55,10 +55,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider
       value={{
         showToast,
-        success: (title, message) => showToast('success', title, message),
-        error: (title, message) => showToast('error', title, message),
-        warning: (title, message) => showToast('warning', title, message),
-        info: (title, message) => showToast('info', title, message),
+        success: (title, message) => showToast(title, 'success', message),
+        error: (title, message) => showToast(title, 'error', message),
+        warning: (title, message) => showToast(title, 'warning', message),
+        info: (title, message) => showToast(title, 'info', message),
       }}
     >
       {children}

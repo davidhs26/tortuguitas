@@ -34,6 +34,46 @@ import {
   solicitarAsadoNocturno,
 } from '@/services/actividades';
 
+// Datos mock para modo demo
+const createMockActividades = (proximoShabbat: Date): Actividad[] => {
+  const domingo = addDays(proximoShabbat, 2);
+  domingo.setHours(12, 0, 0, 0);
+
+  return [
+    {
+      id: 'act-futbol-demo',
+      tipo: 'futbol',
+      fechaShabbat: proximoShabbat,
+      fecha: domingo,
+      participantes: [
+        { usuarioId: 'u1', nombre: 'David Cohen', confirmado: true },
+        { usuarioId: 'u2', nombre: 'Miguel Levy', confirmado: true },
+        { usuarioId: 'u3', nombre: 'Carlos Rubin', confirmado: true },
+        { usuarioId: 'u4', nombre: 'José Mizrahi', confirmado: true },
+        { usuarioId: 'u5', nombre: 'Daniel Benmergui', confirmado: true },
+        { usuarioId: 'u6', nombre: 'Marcos Teper', confirmado: true },
+      ],
+      aprobada: true,
+      createdAt: new Date(),
+    },
+    {
+      id: 'act-asado-demo',
+      tipo: 'asado_domingo',
+      fechaShabbat: proximoShabbat,
+      fecha: domingo,
+      participantes: [
+        { usuarioId: 'u1', nombre: 'David Cohen', confirmado: true },
+        { usuarioId: 'u7', nombre: 'Sara Cohen', confirmado: true },
+        { usuarioId: 'u2', nombre: 'Miguel Levy', confirmado: true },
+        { usuarioId: 'u8', nombre: 'Ruth Levy', confirmado: true },
+      ],
+      aprobada: true,
+      estimacionCarne: 2,
+      createdAt: new Date(),
+    },
+  ];
+};
+
 const TIPO_LABELS: Record<TipoActividad, string> = {
   futbol: 'Partido de Futbol',
   asado_domingo: 'Asado del Domingo',
@@ -56,7 +96,7 @@ const TIPO_GRADIENTS: Record<TipoActividad, string[]> = {
 };
 
 export default function ActividadesScreen() {
-  const { user } = useAuth();
+  const { user, isDemo } = useAuth();
   const { proximoShabbat } = useReservas();
   const { showToast } = useToast();
 
@@ -66,10 +106,15 @@ export default function ActividadesScreen() {
 
   useEffect(() => {
     loadActividades();
-  }, []);
+  }, [isDemo]);
 
   const loadActividades = async () => {
     try {
+      if (isDemo) {
+        setActividades(createMockActividades(proximoShabbat));
+        setLoading(false);
+        return;
+      }
       const data = await getOCrearActividadesSemana(proximoShabbat);
       setActividades(data);
     } catch (err) {
@@ -96,6 +141,26 @@ export default function ActividadesScreen() {
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+    if (isDemo) {
+      // En modo demo, simular inscripción
+      setActividades(prev => prev.map(a => {
+        if (a.id === actividad.id) {
+          return {
+            ...a,
+            participantes: [...a.participantes, {
+              usuarioId: user.id,
+              nombre: `${user.nombre} ${user.apellido}`,
+              confirmado: true,
+            }],
+          };
+        }
+        return a;
+      }));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast(`Te inscribiste en ${TIPO_LABELS[actividad.tipo]}`, 'success');
+      return;
+    }
+
     try {
       await inscribirseActividad(actividad.id, user);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -121,6 +186,22 @@ export default function ActividadesScreen() {
           text: 'Sí, cancelar',
           style: 'destructive',
           onPress: async () => {
+            if (isDemo) {
+              // En modo demo, simular desinscripción
+              setActividades(prev => prev.map(a => {
+                if (a.id === actividad.id) {
+                  return {
+                    ...a,
+                    participantes: a.participantes.filter(p => p.usuarioId !== user.id),
+                  };
+                }
+                return a;
+              }));
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              showToast('Inscripción cancelada', 'info');
+              return;
+            }
+
             try {
               await desinscribirseActividad(actividad.id, user.id);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

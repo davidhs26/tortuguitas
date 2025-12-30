@@ -45,10 +45,21 @@
     "experiments": {
       "typedRoutes": true
     },
+    "updates": {
+      "url": "https://u.expo.dev/8324221b-f235-4c5b-a7ba-97e71bc932d8",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "extra": {
+      "router": {},
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "8324221b-f235-4c5b-a7ba-97e71bc932d8"
       }
-    }
+    },
+    "owner": "davidhsutton-me"
   }
 }

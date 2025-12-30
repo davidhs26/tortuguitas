@@ -15,7 +15,9 @@ interface AuthContextType {
   firebaseUser: FirebaseUser | null;
   loading: boolean;
   error: string | null;
+  isDemo: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signInDemo: () => void;
   signOut: () => Promise<void>;
   register: (data: RegisterFormData) => Promise<void>;
   clearError: () => void;
@@ -23,11 +25,43 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Usuario de demostración para pruebas
+const DEMO_USER: Usuario = {
+  id: 'demo-user-001',
+  email: 'demo@tortuguitas.com',
+  nombre: 'Usuario',
+  apellido: 'Demo',
+  fechaNacimiento: new Date('1990-01-15'),
+  genero: 'varon',
+  grupoFamiliar: 'david',
+  prioridadNivel: 2,
+  historialAsistencias: [],
+  familia: [
+    {
+      id: 'fam-1',
+      nombre: 'María Demo',
+      fechaNacimiento: new Date('2015-06-20'),
+      genero: 'mujer',
+    },
+    {
+      id: 'fam-2',
+      nombre: 'Tomás Demo',
+      fechaNacimiento: new Date('2018-03-10'),
+      genero: 'varon',
+    },
+  ],
+  esAdmin: true, // Para poder ver todas las pantallas
+  telefono: '+54 11 1234-5678',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Usuario | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeToAuthChanges(async (fbUser) => {
@@ -80,8 +114,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      await authSignOut();
-      setUser(null);
+      // Si es modo demo, solo limpiamos el estado
+      if (isDemo) {
+        setUser(null);
+        setIsDemo(false);
+      } else {
+        await authSignOut();
+        setUser(null);
+      }
     } catch (err: any) {
       setError('Error al cerrar sesión');
       throw err;
@@ -115,6 +155,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearError = () => setError(null);
 
+  const signInDemo = () => {
+    setIsDemo(true);
+    setUser(DEMO_USER);
+    setLoading(false);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -122,7 +168,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         firebaseUser,
         loading,
         error,
+        isDemo,
         signIn,
+        signInDemo,
         signOut,
         register,
         clearError,

@@ -1,0 +1,18 @@
+# .eas/workflows/preview.yml
+# EAS Workflow para actualizaciones OTA automáticas
+# Cada push dispara una actualización instantánea en Expo Go
+
+name: Auto OTA Preview
+
+on:
+  push:
+    branches: ['*']
+
+jobs:
+  update:
+    name: Publicar actualización OTA
+    type: update
+    params:
+      channel: preview
+      message: "Update ${{ github.sha }} - ${{ github.event.head_commit.message }}"
+
