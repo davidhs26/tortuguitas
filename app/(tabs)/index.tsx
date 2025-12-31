@@ -7,16 +7,26 @@ import {
   RefreshControl,
   Pressable,
   Dimensions,
+  Image,
 } from 'react-native';
 import Animated, {
   FadeInDown,
   FadeInRight,
+  FadeInUp,
+  useAnimatedScrollHandler,
+  useSharedValue,
+  useAnimatedStyle,
+  interpolate,
+  Extrapolation,
+  withSpring,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { format, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { FontAwesome } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { useAuth, useReservas } from '@/context';
 import {
   AnimatedCard,
@@ -25,30 +35,35 @@ import {
   Badge,
   Skeleton,
   useToast,
+  ScalePress,
+  FadeView,
+  ProgressBar,
+  StatsHero,
 } from '@/components/ui';
-import { Theme } from '@/constants/Theme';
+import { Theme, Gradients, SectorConfig } from '@/constants/Theme';
 import { calcularMinyan } from '@/services/actividades';
 
-// Mock minyan info para modo demo
+// Mock minyan info for demo mode
 const MOCK_MINYAN_INFO = {
   cantidad: 7,
   completo: false,
   faltantes: 3,
 };
 
-const { width } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Sector names constant (outside component to avoid recreation)
-const SECTOR_NAMES: Record<string, string> = {
-  david: 'Sector David',
-  mumi: 'Sector Mumi',
-  tuni: 'Sector Tuni',
-  quincho: 'Quincho',
-  libre: 'Sin asignar',
-};
+const HERO_IMAGE = 'https://images.unsplash.com/photo-1584132967334-10e028bd69f7?w=1200&q=80';
+
+const QUICK_ACTIONS = [
+  { emoji: '🏠', title: 'Habitaciones', subtitle: 'Reservar', route: '/(tabs)/reservas', gradient: Gradients.ocean },
+  { emoji: '⚽', title: 'Futbol', subtitle: 'Domingo', route: '/(tabs)/actividades', gradient: Gradients.forest },
+  { emoji: '🥩', title: 'Asado', subtitle: 'Inscribirme', route: '/(tabs)/actividades', gradient: Gradients.sunset },
+  { emoji: '👨‍👩‍👧‍👦', title: 'Familia', subtitle: 'Mi grupo', route: '/(tabs)/perfil', gradient: Gradients.rose },
+];
 
 export default function HomeScreen() {
   const { user, isDemo } = useAuth();
+  const insets = useSafeAreaInsets();
   const toast = useToast();
   const {
     misReservas,
@@ -65,6 +80,14 @@ export default function HomeScreen() {
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+
+  const scrollY = useSharedValue(0);
+
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
 
   useEffect(() => {
     if (user) {
@@ -87,7 +110,6 @@ export default function HomeScreen() {
       }
     } catch (err) {
       console.error('Error cargando datos:', err);
-      // En modo demo, si hay error igual mostramos los datos mock
       if (isDemo) {
         setMinyanInfo(MOCK_MINYAN_INFO);
       }
@@ -98,12 +120,12 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await loadData();
     setRefreshing(false);
     toast.success('Actualizado', 'Datos actualizados correctamente');
   }, []);
 
-  // Memoized computed values
   const proximaReserva = useMemo(
     () => misReservas.find(
       r => r.estado !== 'cancelada' && new Date(r.fechaShabbat) >= new Date()
@@ -126,287 +148,325 @@ export default function HomeScreen() {
     [user?.nombre, user?.apellido]
   );
 
+  const sectorConfig = user?.grupoFamiliar ? SectorConfig[user.grupoFamiliar as keyof typeof SectorConfig] : null;
+
+  // Animated header styles
+  const headerAnimatedStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      scrollY.value,
+      [0, 150],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+
+    return {
+      opacity,
+      backgroundColor: `rgba(255, 255, 255, ${opacity})`,
+    };
+  });
+
   if (initialLoading) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <View style={styles.greetingSection}>
-          <Skeleton width={200} height={32} />
-          <Skeleton width={160} height={20} style={{ marginTop: 8 }} />
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.content}>
+          <Skeleton width={200} height={32} style={{ marginBottom: 8 }} />
+          <Skeleton width={160} height={20} style={{ marginBottom: 24 }} />
+          <Skeleton height={200} borderRadius={24} style={{ marginBottom: 16 }} />
+          <Skeleton height={140} borderRadius={20} style={{ marginBottom: 16 }} />
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <Skeleton height={120} borderRadius={16} style={{ flex: 1 }} />
+            <Skeleton height={120} borderRadius={16} style={{ flex: 1 }} />
+          </View>
         </View>
-        <Skeleton height={180} borderRadius={20} style={{ marginBottom: 16 }} />
-        <Skeleton height={120} borderRadius={16} style={{ marginBottom: 16 }} />
-        <Skeleton height={80} borderRadius={16} />
-      </ScrollView>
+      </View>
     );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={Theme.colors.primary}
-        />
-      }
-    >
-      {/* Greeting Section */}
-      <Animated.View
-        entering={FadeInDown.duration(400).delay(100)}
-        style={styles.greetingSection}
-      >
-        <View style={styles.greetingRow}>
-          <View style={styles.greetingText}>
-            <Text style={styles.greeting}>Shalom,</Text>
-            <Text style={styles.userName}>{user?.nombre || 'Familia'}</Text>
-          </View>
-          <Pressable onPress={() => router.push('/(tabs)/perfil')}>
-            <Avatar
-              name={userFullName}
-              size="large"
-              color={Theme.colors.primary}
-            />
+    <View style={styles.container}>
+      {/* Animated Header */}
+      <Animated.View style={[styles.animatedHeader, headerAnimatedStyle, { paddingTop: insets.top }]}>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Tortuguitas</Text>
+          <Pressable onPress={() => router.push('/notificaciones')}>
+            <FontAwesome name="bell-o" size={22} color={Theme.colors.text} />
           </Pressable>
         </View>
-        <View style={styles.userBadges}>
-          <Badge
-            label={SECTOR_NAMES[user?.grupoFamiliar || 'libre']}
-            variant="info"
-            size="small"
+      </Animated.View>
+
+      <Animated.ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top }]}
+        showsVerticalScrollIndicator={false}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Theme.colors.primary}
+            progressViewOffset={insets.top}
           />
-          {user?.esAdmin && (
-            <Badge label="Admin" variant="error" size="small" />
-          )}
-        </View>
-      </Animated.View>
-
-      {/* Shabbat Card */}
-      <Animated.View entering={FadeInDown.duration(400).delay(200)}>
-        <LinearGradient
-          colors={[Theme.colors.primary, Theme.colors.primaryDark]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.shabbatCard}
-        >
-          <View style={styles.shabbatHeader}>
-            <View style={styles.shabbatBadge}>
-              <Text style={styles.shabbatBadgeText}>PROXIMO SHABBAT</Text>
-            </View>
-            <View style={styles.statusDot}>
-              <View style={[
-                styles.statusDotInner,
-                { backgroundColor: puedeReservar ? Theme.colors.success : Theme.colors.warning }
-              ]} />
-            </View>
-          </View>
-
-          <Text style={styles.shabbatDate}>{shabbatDate}</Text>
-          <Text style={styles.shabbatArrival}>
-            <FontAwesome name="calendar" size={14} color="rgba(255,255,255,0.7)" />
-            {'  '}Llegada: {llegadaDate}
-          </Text>
-
-          {puedeReservar && !proximaReserva && (
-            <AnimatedButton
-              title="Hacer Reserva"
-              onPress={() => router.push('/(tabs)/reservas')}
-              variant="secondary"
-              style={styles.reserveButton}
-              haptic
-            />
-          )}
-
-          {!puedeReservar && (
-            <View style={styles.closedBanner}>
-              <FontAwesome name="lock" size={12} color={Theme.colors.warning} />
-              <Text style={styles.closedText}>Reservas abren el lunes</Text>
-            </View>
-          )}
-        </LinearGradient>
-      </Animated.View>
-
-      {/* Current Reservation */}
-      {proximaReserva && (
-        <Animated.View entering={FadeInDown.duration(400).delay(300)}>
-          <AnimatedCard
-            variant="elevated"
-            style={styles.reservaCard}
-            onPress={() => router.push(`/reserva/${proximaReserva.id}`)}
-          >
-            <View style={styles.reservaHeader}>
-              <View>
-                <Text style={styles.reservaLabel}>Tu reserva</Text>
-                <Text style={styles.reservaHabitacion}>
-                  {proximaReserva.habitacionNombre}
-                </Text>
+        }
+      >
+        {/* Hero Section */}
+        <FadeView direction="down" delay={0}>
+          <View style={styles.heroSection}>
+            {/* Greeting */}
+            <View style={styles.greetingRow}>
+              <View style={styles.greetingText}>
+                <Text style={styles.greeting}>Shalom,</Text>
+                <Text style={styles.userName}>{user?.nombre || 'Familia'}</Text>
               </View>
-              <Badge
-                label={proximaReserva.estado.charAt(0).toUpperCase() + proximaReserva.estado.slice(1)}
-                variant={
-                  proximaReserva.estado === 'confirmada'
-                    ? 'success'
-                    : proximaReserva.estado === 'mudada'
-                    ? 'warning'
-                    : 'default'
-                }
-              />
+              <ScalePress onPress={() => router.push('/(tabs)/perfil')}>
+                <View style={styles.avatarContainer}>
+                  <Avatar
+                    name={userFullName}
+                    size="large"
+                    color={sectorConfig?.color || Theme.colors.primary}
+                  />
+                  {user?.esAdmin && (
+                    <View style={styles.adminStar}>
+                      <FontAwesome name="star" size={10} color={Theme.colors.warning} />
+                    </View>
+                  )}
+                </View>
+              </ScalePress>
             </View>
 
-            <View style={styles.reservaDetails}>
-              <View style={styles.reservaDetail}>
-                <FontAwesome name="users" size={14} color={Theme.colors.textSecondary} />
-                <Text style={styles.reservaDetailText}>
-                  {proximaReserva.participantes.length} participantes
-                </Text>
-              </View>
-              {proximaReserva.invitados.length > 0 && (
-                <View style={styles.reservaDetail}>
-                  <FontAwesome name="user-plus" size={14} color={Theme.colors.textSecondary} />
-                  <Text style={styles.reservaDetailText}>
-                    {proximaReserva.invitados.length} invitados
-                  </Text>
+            {/* User badges */}
+            <View style={styles.userBadges}>
+              {sectorConfig && (
+                <LinearGradient
+                  colors={sectorConfig.gradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.sectorBadge}
+                >
+                  <FontAwesome name={sectorConfig.icon} size={10} color={Theme.colors.white} />
+                  <Text style={styles.sectorBadgeText}>{sectorConfig.name}</Text>
+                </LinearGradient>
+              )}
+              {user?.esAdmin && (
+                <View style={styles.adminBadge}>
+                  <FontAwesome name="shield" size={10} color={Theme.colors.error} />
+                  <Text style={styles.adminBadgeText}>Admin</Text>
                 </View>
               )}
             </View>
+          </View>
+        </FadeView>
 
-            <View style={styles.reservaFooter}>
-              <Text style={styles.viewDetails}>Ver detalles</Text>
-              <FontAwesome name="chevron-right" size={12} color={Theme.colors.primary} />
-            </View>
-          </AnimatedCard>
-        </Animated.View>
-      )}
+        {/* Shabbat Hero Card */}
+        <FadeView direction="up" delay={100}>
+          <View style={styles.shabbatCardWrapper}>
+            <AnimatedCard
+              variant="image"
+              image={HERO_IMAGE}
+              imageOverlay
+              onPress={() => router.push('/(tabs)/reservas')}
+              style={styles.shabbatCard}
+            >
+              <View style={styles.shabbatContent}>
+                {/* Status pill */}
+                <View style={styles.shabbatStatusRow}>
+                  <View style={[
+                    styles.statusPill,
+                    { backgroundColor: puedeReservar ? 'rgba(16, 185, 129, 0.9)' : 'rgba(239, 68, 68, 0.9)' }
+                  ]}>
+                    <View style={[
+                      styles.statusDot,
+                      { backgroundColor: Theme.colors.white }
+                    ]} />
+                    <Text style={styles.statusText}>
+                      {puedeReservar ? 'Reservas abiertas' : 'Reservas cerradas'}
+                    </Text>
+                  </View>
+                </View>
 
-      {/* Minyan Status */}
-      {minyanInfo && (
-        <Animated.View entering={FadeInDown.duration(400).delay(400)}>
-          <AnimatedCard variant="outlined" style={styles.minyanCard}>
-            <View style={styles.minyanHeader}>
-              <Text style={styles.minyanIcon}>📖</Text>
-              <View style={styles.minyanInfo}>
-                <Text style={styles.minyanTitle}>Minyan</Text>
-                <Text style={styles.minyanSubtitle}>
-                  {minyanInfo.completo ? 'Completo' : `Faltan ${minyanInfo.faltantes}`}
-                </Text>
+                {/* Shabbat info */}
+                <View style={styles.shabbatInfo}>
+                  <Text style={styles.shabbatLabel}>PROXIMO SHABBAT</Text>
+                  <Text style={styles.shabbatDate}>{shabbatDate}</Text>
+                  <View style={styles.arrivalRow}>
+                    <FontAwesome name="calendar-check-o" size={14} color="rgba(255,255,255,0.8)" />
+                    <Text style={styles.arrivalText}>Llegada: {llegadaDate}</Text>
+                  </View>
+                </View>
+
+                {/* CTA Button */}
+                {puedeReservar && !proximaReserva && (
+                  <AnimatedButton
+                    title="Hacer Reserva"
+                    variant="secondary"
+                    icon="arrow-right"
+                    onPress={() => router.push('/(tabs)/reservas')}
+                    style={styles.heroButton}
+                    haptic
+                  />
+                )}
               </View>
-              <View style={styles.minyanProgress}>
-                <Text style={styles.minyanCount}>{minyanInfo.cantidad}</Text>
-                <Text style={styles.minyanTotal}>/10</Text>
+            </AnimatedCard>
+          </View>
+        </FadeView>
+
+        {/* Current Reservation Card */}
+        {proximaReserva && (
+          <FadeView direction="up" delay={200}>
+            <ScalePress onPress={() => router.push(`/reserva/${proximaReserva.id}`)}>
+              <View style={styles.reservaCard}>
+                <LinearGradient
+                  colors={Gradients.ocean}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.reservaGradient}
+                >
+                  <View style={styles.reservaContent}>
+                    <View style={styles.reservaIcon}>
+                      <FontAwesome name="check-circle" size={24} color={Theme.colors.white} />
+                    </View>
+                    <View style={styles.reservaInfo}>
+                      <Text style={styles.reservaLabel}>Tu reserva confirmada</Text>
+                      <Text style={styles.reservaHabitacion}>
+                        {proximaReserva.habitacionNombre}
+                      </Text>
+                      <View style={styles.reservaDetails}>
+                        <FontAwesome name="users" size={12} color="rgba(255,255,255,0.8)" />
+                        <Text style={styles.reservaDetailText}>
+                          {proximaReserva.participantes.length} personas
+                        </Text>
+                      </View>
+                    </View>
+                    <FontAwesome name="chevron-right" size={16} color="rgba(255,255,255,0.8)" />
+                  </View>
+                </LinearGradient>
               </View>
-            </View>
-            <View style={styles.minyanBar}>
-              <View
-                style={[
-                  styles.minyanBarFill,
-                  {
-                    width: `${Math.min((minyanInfo.cantidad / 10) * 100, 100)}%`,
-                    backgroundColor: minyanInfo.completo
-                      ? Theme.colors.success
-                      : Theme.colors.warning,
-                  },
-                ]}
+            </ScalePress>
+          </FadeView>
+        )}
+
+        {/* Minyan Progress Card */}
+        {minyanInfo && (
+          <FadeView direction="up" delay={300}>
+            <AnimatedCard variant="elevated" style={styles.minyanCard}>
+              <View style={styles.minyanHeader}>
+                <View style={styles.minyanIconContainer}>
+                  <Text style={styles.minyanEmoji}>📖</Text>
+                </View>
+                <View style={styles.minyanInfo}>
+                  <Text style={styles.minyanTitle}>Minyan Shabat</Text>
+                  <Text style={styles.minyanSubtitle}>
+                    {minyanInfo.completo
+                      ? '¡Minyan completo!'
+                      : `Faltan ${minyanInfo.faltantes} para minyan`}
+                  </Text>
+                </View>
+                <View style={styles.minyanCounter}>
+                  <Text style={styles.minyanCount}>{minyanInfo.cantidad}</Text>
+                  <Text style={styles.minyanTotal}>/10</Text>
+                </View>
+              </View>
+              <ProgressBar
+                progress={(minyanInfo.cantidad / 10) * 100}
+                color={minyanInfo.completo ? Theme.colors.success : Theme.colors.warning}
+                backgroundColor={Theme.colors.border}
+                height={8}
               />
-            </View>
-          </AnimatedCard>
-        </Animated.View>
-      )}
+            </AnimatedCard>
+          </FadeView>
+        )}
 
-      {/* Quick Actions */}
-      <Animated.View
-        entering={FadeInDown.duration(400).delay(500)}
-        style={styles.quickActionsSection}
-      >
-        <Text style={styles.sectionTitle}>Acceso Rapido</Text>
+        {/* Quick Actions Section */}
+        <FadeView direction="up" delay={400}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Acceso Rapido</Text>
+          </View>
 
-        <View style={styles.quickActionsGrid}>
-          <QuickActionCard
-            emoji="📅"
-            title="Habitaciones"
-            subtitle="Ver disponibilidad"
-            onPress={() => router.push('/(tabs)/reservas')}
-            delay={0}
-          />
-          <QuickActionCard
-            emoji="⚽"
-            title="Futbol"
-            subtitle="Domingo"
-            onPress={() => router.push('/(tabs)/actividades')}
-            delay={50}
-          />
-          <QuickActionCard
-            emoji="🥩"
-            title="Asado"
-            subtitle="Inscribirse"
-            onPress={() => router.push('/(tabs)/actividades')}
-            delay={100}
-          />
-          <QuickActionCard
-            emoji="👨‍👩‍👧‍👦"
-            title="Familia"
-            subtitle="Mi grupo"
-            onPress={() => router.push('/(tabs)/perfil')}
-            delay={150}
-          />
-        </View>
-      </Animated.View>
+          <View style={styles.quickActionsGrid}>
+            {QUICK_ACTIONS.map((action, index) => (
+              <QuickActionCard
+                key={action.title}
+                {...action}
+                delay={index * 50}
+                onPress={() => router.push(action.route as any)}
+              />
+            ))}
+          </View>
+        </FadeView>
 
-      {/* Admin Quick Access */}
-      {user?.esAdmin && (
-        <Animated.View entering={FadeInDown.duration(400).delay(600)}>
-          <AnimatedCard
-            variant="filled"
-            color={Theme.colors.errorBackground}
-            onPress={() => router.push('/admin')}
-            style={styles.adminCard}
-          >
-            <View style={styles.adminContent}>
-              <View style={styles.adminIcon}>
-                <FontAwesome name="cog" size={20} color={Theme.colors.error} />
+        {/* Admin Card */}
+        {user?.esAdmin && (
+          <FadeView direction="up" delay={500}>
+            <ScalePress onPress={() => router.push('/admin')}>
+              <View style={styles.adminCard}>
+                <LinearGradient
+                  colors={Gradients.sunset}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.adminGradient}
+                >
+                  <View style={styles.adminContent}>
+                    <View style={styles.adminIconContainer}>
+                      <FontAwesome name="cog" size={24} color={Theme.colors.white} />
+                    </View>
+                    <View style={styles.adminInfo}>
+                      <Text style={styles.adminTitle}>Panel de Admin</Text>
+                      <Text style={styles.adminSubtitle}>Gestionar la quinta</Text>
+                    </View>
+                    <FontAwesome name="chevron-right" size={16} color="rgba(255,255,255,0.8)" />
+                  </View>
+                </LinearGradient>
               </View>
-              <View style={styles.adminText}>
-                <Text style={styles.adminTitle}>Panel de Administracion</Text>
-                <Text style={styles.adminSubtitle}>Gestionar precios, usuarios y mas</Text>
-              </View>
-              <FontAwesome name="chevron-right" size={16} color={Theme.colors.error} />
-            </View>
-          </AnimatedCard>
-        </Animated.View>
-      )}
-    </ScrollView>
+            </ScalePress>
+          </FadeView>
+        )}
+
+        {/* Bottom Spacer */}
+        <View style={{ height: 100 }} />
+      </Animated.ScrollView>
+    </View>
   );
 }
 
-// Memoized QuickActionCard for better performance
+// Memoized Quick Action Card
 const QuickActionCard = memo(function QuickActionCard({
   emoji,
   title,
   subtitle,
+  gradient,
   onPress,
   delay,
 }: {
   emoji: string;
   title: string;
   subtitle: string;
+  gradient: [string, string];
   onPress: () => void;
   delay: number;
 }) {
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
   return (
     <Animated.View
-      entering={FadeInRight.duration(300).delay(delay)}
-      style={styles.quickActionWrapper}
+      entering={FadeInRight.delay(delay).springify()}
+      style={[styles.quickActionWrapper, animatedStyle]}
     >
-      <AnimatedCard
-        variant="default"
-        onPress={onPress}
-        style={styles.quickActionCard}
-      >
-        <Text style={styles.quickActionEmoji}>{emoji}</Text>
-        <Text style={styles.quickActionTitle}>{title}</Text>
-        <Text style={styles.quickActionSubtitle}>{subtitle}</Text>
-      </AnimatedCard>
+      <ScalePress onPress={onPress} activeScale={0.95}>
+        <LinearGradient
+          colors={gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.quickActionCard}
+        >
+          <Text style={styles.quickActionEmoji}>{emoji}</Text>
+          <Text style={styles.quickActionTitle}>{title}</Text>
+          <Text style={styles.quickActionSubtitle}>{subtitle}</Text>
+        </LinearGradient>
+      </ScalePress>
     </Animated.View>
   );
 });
@@ -416,12 +476,41 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Theme.colors.background,
   },
+  animatedHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    borderBottomWidth: 1,
+    borderBottomColor: Theme.colors.border,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.lg,
+    paddingVertical: Theme.spacing.md,
+  },
+  headerTitle: {
+    fontSize: Theme.fontSize.lg,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.text,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: Theme.spacing.lg,
+  },
   content: {
     padding: Theme.spacing.lg,
-    paddingBottom: Theme.spacing.xxxl,
   },
-  greetingSection: {
+
+  // Hero Section
+  heroSection: {
     marginBottom: Theme.spacing.xl,
+    paddingTop: Theme.spacing.md,
   },
   greetingRow: {
     flexDirection: 'row',
@@ -434,141 +523,194 @@ const styles = StyleSheet.create({
   greeting: {
     fontSize: Theme.fontSize.md,
     color: Theme.colors.textSecondary,
+    marginBottom: Theme.spacing.xxs,
   },
   userName: {
-    fontSize: Theme.fontSize.xxl,
+    fontSize: Theme.typography.h2.fontSize,
     fontWeight: Theme.fontWeight.bold,
     color: Theme.colors.text,
+    letterSpacing: -0.5,
+  },
+  avatarContainer: {
+    position: 'relative',
+  },
+  adminStar: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Theme.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Theme.shadows.sm,
   },
   userBadges: {
     flexDirection: 'row',
     gap: Theme.spacing.sm,
-    marginTop: Theme.spacing.sm,
+    marginTop: Theme.spacing.md,
   },
-  shabbatCard: {
-    borderRadius: Theme.borderRadius.xl,
-    padding: Theme.spacing.xl,
-    marginBottom: Theme.spacing.lg,
-  },
-  shabbatHeader: {
+  sectorBadge: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Theme.spacing.md,
-  },
-  shabbatBadge: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    gap: Theme.spacing.xs,
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.xs,
     borderRadius: Theme.borderRadius.full,
   },
-  shabbatBadgeText: {
-    color: Theme.colors.white,
+  sectorBadgeText: {
     fontSize: Theme.fontSize.xs,
     fontWeight: Theme.fontWeight.semibold,
-    letterSpacing: 1,
-  },
-  statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusDotInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  shabbatDate: {
-    fontSize: 32,
-    fontWeight: Theme.fontWeight.bold,
     color: Theme.colors.white,
-    marginBottom: Theme.spacing.xs,
   },
-  shabbatArrival: {
-    fontSize: Theme.fontSize.md,
-    color: 'rgba(255,255,255,0.8)',
+  adminBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.xs,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.xs,
+    borderRadius: Theme.borderRadius.full,
+    backgroundColor: Theme.colors.errorBackground,
+  },
+  adminBadgeText: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: Theme.fontWeight.semibold,
+    color: Theme.colors.error,
+  },
+
+  // Shabbat Card
+  shabbatCardWrapper: {
     marginBottom: Theme.spacing.lg,
   },
-  reserveButton: {
-    backgroundColor: Theme.colors.white,
+  shabbatCard: {
+    minHeight: 240,
+    borderRadius: Theme.borderRadius.cardLarge,
   },
-  closedBanner: {
+  shabbatContent: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  shabbatStatusRow: {
+    flexDirection: 'row',
+  },
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Theme.spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.15)',
     paddingHorizontal: Theme.spacing.md,
     paddingVertical: Theme.spacing.sm,
-    borderRadius: Theme.borderRadius.md,
-    alignSelf: 'flex-start',
+    borderRadius: Theme.borderRadius.full,
   },
-  closedText: {
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: Theme.fontWeight.semibold,
     color: Theme.colors.white,
-    fontSize: Theme.fontSize.sm,
   },
+  shabbatInfo: {
+    marginTop: 'auto',
+  },
+  shabbatLabel: {
+    fontSize: Theme.fontSize.xs,
+    fontWeight: Theme.fontWeight.semibold,
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 1,
+    marginBottom: Theme.spacing.xs,
+  },
+  shabbatDate: {
+    fontSize: Theme.typography.h1.fontSize,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.white,
+    letterSpacing: -0.5,
+  },
+  arrivalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Theme.spacing.sm,
+    marginTop: Theme.spacing.sm,
+  },
+  arrivalText: {
+    fontSize: Theme.fontSize.sm,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  heroButton: {
+    marginTop: Theme.spacing.lg,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+
+  // Reservation Card
   reservaCard: {
     marginBottom: Theme.spacing.lg,
+    borderRadius: Theme.borderRadius.xl,
+    overflow: 'hidden',
+    ...Theme.shadows.lg,
   },
-  reservaHeader: {
+  reservaGradient: {
+    padding: Theme.spacing.lg,
+  },
+  reservaContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: Theme.spacing.md,
+    alignItems: 'center',
+  },
+  reservaIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Theme.spacing.md,
+  },
+  reservaInfo: {
+    flex: 1,
   },
   reservaLabel: {
     fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    color: 'rgba(255,255,255,0.8)',
+    marginBottom: Theme.spacing.xxs,
   },
   reservaHabitacion: {
     fontSize: Theme.fontSize.lg,
-    fontWeight: Theme.fontWeight.semibold,
-    color: Theme.colors.text,
-    marginTop: 2,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.white,
   },
   reservaDetails: {
     flexDirection: 'row',
-    gap: Theme.spacing.lg,
-    marginBottom: Theme.spacing.md,
-  },
-  reservaDetail: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: Theme.spacing.sm,
+    gap: Theme.spacing.xs,
+    marginTop: Theme.spacing.xs,
   },
   reservaDetailText: {
     fontSize: Theme.fontSize.sm,
-    color: Theme.colors.textSecondary,
+    color: 'rgba(255,255,255,0.8)',
   },
-  reservaFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: Theme.spacing.xs,
-    paddingTop: Theme.spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Theme.colors.border,
-  },
-  viewDetails: {
-    fontSize: Theme.fontSize.sm,
-    color: Theme.colors.primary,
-    fontWeight: Theme.fontWeight.medium,
-  },
+
+  // Minyan Card
   minyanCard: {
     marginBottom: Theme.spacing.xl,
+    padding: Theme.spacing.lg,
   },
   minyanHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Theme.spacing.md,
+    marginBottom: Theme.spacing.lg,
   },
-  minyanIcon: {
-    fontSize: 28,
+  minyanIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Theme.colors.warningBackground,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: Theme.spacing.md,
+  },
+  minyanEmoji: {
+    fontSize: 24,
   },
   minyanInfo: {
     flex: 1,
@@ -581,91 +723,96 @@ const styles = StyleSheet.create({
   minyanSubtitle: {
     fontSize: Theme.fontSize.sm,
     color: Theme.colors.textSecondary,
+    marginTop: Theme.spacing.xxs,
   },
-  minyanProgress: {
+  minyanCounter: {
     flexDirection: 'row',
     alignItems: 'baseline',
   },
   minyanCount: {
-    fontSize: Theme.fontSize.xxl,
+    fontSize: Theme.fontSize.xxxl,
     fontWeight: Theme.fontWeight.bold,
     color: Theme.colors.text,
   },
   minyanTotal: {
-    fontSize: Theme.fontSize.md,
+    fontSize: Theme.fontSize.lg,
     color: Theme.colors.textSecondary,
   },
-  minyanBar: {
-    height: 6,
-    backgroundColor: Theme.colors.border,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  minyanBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  quickActionsSection: {
-    marginBottom: Theme.spacing.lg,
+
+  // Section Header
+  sectionHeader: {
+    marginBottom: Theme.spacing.md,
   },
   sectionTitle: {
     fontSize: Theme.fontSize.lg,
-    fontWeight: Theme.fontWeight.semibold,
+    fontWeight: Theme.fontWeight.bold,
     color: Theme.colors.text,
-    marginBottom: Theme.spacing.md,
   },
+
+  // Quick Actions
   quickActionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Theme.spacing.md,
+    marginBottom: Theme.spacing.xl,
   },
   quickActionWrapper: {
-    width: (width - Theme.spacing.lg * 2 - Theme.spacing.md) / 2,
+    width: (SCREEN_WIDTH - Theme.spacing.lg * 2 - Theme.spacing.md) / 2,
   },
   quickActionCard: {
+    padding: Theme.spacing.lg,
+    borderRadius: Theme.borderRadius.xl,
     alignItems: 'center',
-    paddingVertical: Theme.spacing.xl,
+    ...Theme.shadows.md,
   },
   quickActionEmoji: {
-    fontSize: 32,
+    fontSize: 36,
     marginBottom: Theme.spacing.sm,
   },
   quickActionTitle: {
     fontSize: Theme.fontSize.md,
-    fontWeight: Theme.fontWeight.semibold,
-    color: Theme.colors.text,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.white,
   },
   quickActionSubtitle: {
     fontSize: Theme.fontSize.xs,
-    color: Theme.colors.textSecondary,
-    marginTop: 2,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: Theme.spacing.xxs,
   },
+
+  // Admin Card
   adminCard: {
-    marginTop: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.xl,
+    overflow: 'hidden',
+    ...Theme.shadows.lg,
+  },
+  adminGradient: {
+    padding: Theme.spacing.lg,
   },
   adminContent: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  adminIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Theme.colors.white,
+  adminIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Theme.spacing.md,
   },
-  adminText: {
+  adminInfo: {
     flex: 1,
   },
   adminTitle: {
     fontSize: Theme.fontSize.md,
-    fontWeight: Theme.fontWeight.semibold,
-    color: Theme.colors.errorDark,
+    fontWeight: Theme.fontWeight.bold,
+    color: Theme.colors.white,
   },
   adminSubtitle: {
     fontSize: Theme.fontSize.sm,
-    color: Theme.colors.error,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: Theme.spacing.xxs,
   },
 });

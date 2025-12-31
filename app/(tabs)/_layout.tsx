@@ -1,43 +1,90 @@
 import React from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  interpolate,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 
-import { useColorScheme } from '@/components/useColorScheme';
-import Colors from '@/constants/Colors';
+import { Theme } from '@/constants/Theme';
 
-function TabBarIcon(props: {
+interface TabBarIconProps {
   name: React.ComponentProps<typeof FontAwesome>['name'];
   color: string;
-}) {
-  return <FontAwesome size={24} style={{ marginBottom: -3 }} {...props} />;
+  focused: boolean;
+}
+
+function TabBarIcon({ name, color, focused }: TabBarIconProps) {
+  const scale = useSharedValue(focused ? 1 : 0.9);
+  const translateY = useSharedValue(focused ? -2 : 0);
+
+  React.useEffect(() => {
+    scale.value = withSpring(focused ? 1.1 : 1, Theme.animation.spring.stiff);
+    translateY.value = withSpring(focused ? -4 : 0, Theme.animation.spring.stiff);
+  }, [focused]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: scale.value },
+      { translateY: translateY.value },
+    ],
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <FontAwesome name={name} size={22} color={color} />
+    </Animated.View>
+  );
+}
+
+function TabBarBackground() {
+  if (Platform.OS === 'ios') {
+    return (
+      <BlurView
+        intensity={90}
+        tint="light"
+        style={StyleSheet.absoluteFill}
+      />
+    );
+  }
+  return <View style={[StyleSheet.absoluteFill, styles.tabBarBackground]} />;
 }
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarActiveTintColor: Theme.colors.primary,
+        tabBarInactiveTintColor: Theme.colors.textTertiary,
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
+          position: 'absolute',
+          height: 65 + insets.bottom,
           paddingTop: 8,
-          paddingBottom: 8,
-          height: 60,
+          paddingBottom: insets.bottom + 8,
+          borderTopWidth: 0,
+          backgroundColor: 'transparent',
+          elevation: 0,
         },
+        tabBarBackground: () => <TabBarBackground />,
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '500',
-        },
-        headerStyle: {
-          backgroundColor: '#2563EB',
-        },
-        headerTintColor: '#FFFFFF',
-        headerTitleStyle: {
+          fontSize: 11,
           fontWeight: '600',
+          marginTop: 4,
+        },
+        headerShown: false,
+        tabBarHideOnKeyboard: true,
+      }}
+      screenListeners={{
+        tabPress: () => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         },
       }}
     >
@@ -45,31 +92,46 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Inicio',
-          headerTitle: 'Tortuguitas',
-          tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="home" color={color} focused={focused} />
+          ),
         }}
       />
       <Tabs.Screen
         name="reservas"
         options={{
           title: 'Reservas',
-          tabBarIcon: ({ color }) => <TabBarIcon name="calendar" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="calendar" color={color} focused={focused} />
+          ),
         }}
       />
       <Tabs.Screen
         name="actividades"
         options={{
           title: 'Actividades',
-          tabBarIcon: ({ color }) => <TabBarIcon name="futbol-o" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="futbol-o" color={color} focused={focused} />
+          ),
         }}
       />
       <Tabs.Screen
         name="perfil"
         options={{
           title: 'Perfil',
-          tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="user" color={color} focused={focused} />
+          ),
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabBarBackground: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderTopWidth: 1,
+    borderTopColor: Theme.colors.border,
+  },
+});
