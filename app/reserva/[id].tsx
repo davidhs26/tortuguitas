@@ -17,7 +17,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { useAuth } from '@/context';
+import { useAuth, useReservas } from '@/context';
 import {
   AnimatedButton,
   AnimatedCard,
@@ -45,7 +45,8 @@ const ESTADO_CONFIG = {
 export default function ReservaDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, isDemo } = useAuth();
+  const { misReservas, reservas } = useReservas();
   const { showToast } = useToast();
 
   const [reserva, setReserva] = useState<Reserva | null>(null);
@@ -66,8 +67,24 @@ export default function ReservaDetailScreen() {
       setLoading(false);
       return;
     }
+
     try {
-      console.log('Loading reserva with id:', id);
+      console.log('Loading reserva with id:', id, 'isDemo:', isDemo);
+
+      // En modo demo, buscar en las reservas del contexto
+      if (isDemo) {
+        const allReservas = [...misReservas, ...reservas];
+        const demoReserva = allReservas.find(r => r.id === id);
+        console.log('Demo reserva found:', demoReserva);
+        if (!demoReserva) {
+          showToast('Reserva no encontrada', 'error');
+        }
+        setReserva(demoReserva || null);
+        setLoading(false);
+        return;
+      }
+
+      // En modo normal, buscar en Firebase
       const data = await getReserva(id);
       console.log('Reserva data:', data);
       if (!data) {
