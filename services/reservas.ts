@@ -24,6 +24,7 @@ import {
   NivelPrioridad,
   ResultadoMudanza,
   Notificacion,
+  Invitado,
 } from '@/types';
 import { getHabitacion, getHabitacionesOrdenadas, ORDEN_CATEGORIAS } from './habitaciones';
 import { v4 as uuidv4 } from 'uuid';
@@ -476,5 +477,69 @@ export async function getDisponibilidadSemana(fechaShabbat: Date): Promise<{
       disponible: !reserva,
       reserva,
     };
+  });
+}
+
+// ============================================
+// GESTIÓN DE INVITADOS
+// ============================================
+
+// Agregar invitado a una reserva
+export async function agregarInvitado(
+  reservaId: string,
+  invitado: Invitado
+): Promise<void> {
+  const reserva = await getReserva(reservaId);
+
+  if (!reserva) {
+    throw new Error('Reserva no encontrada');
+  }
+
+  if (reserva.estado === 'cancelada') {
+    throw new Error('No se pueden agregar invitados a una reserva cancelada');
+  }
+
+  const invitadosActuales = reserva.invitados || [];
+
+  // Verificar si el invitado ya existe
+  const yaExiste = invitadosActuales.some(
+    (inv) => inv.nombre.toLowerCase() === invitado.nombre.toLowerCase()
+  );
+
+  if (yaExiste) {
+    throw new Error('Este invitado ya está en la reserva');
+  }
+
+  await actualizarReserva(reservaId, {
+    invitados: [...invitadosActuales, invitado],
+  });
+}
+
+// Quitar invitado de una reserva
+export async function quitarInvitado(
+  reservaId: string,
+  invitadoId: string
+): Promise<void> {
+  const reserva = await getReserva(reservaId);
+
+  if (!reserva) {
+    throw new Error('Reserva no encontrada');
+  }
+
+  if (reserva.estado === 'cancelada') {
+    throw new Error('No se pueden modificar invitados de una reserva cancelada');
+  }
+
+  const invitadosActuales = reserva.invitados || [];
+  const invitadosFiltrados = invitadosActuales.filter(
+    (inv) => inv.id !== invitadoId
+  );
+
+  if (invitadosFiltrados.length === invitadosActuales.length) {
+    throw new Error('Invitado no encontrado');
+  }
+
+  await actualizarReserva(reservaId, {
+    invitados: invitadosFiltrados,
   });
 }

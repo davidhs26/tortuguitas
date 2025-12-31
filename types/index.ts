@@ -83,6 +83,23 @@ export interface ParticipanteReserva {
   camaAsignada?: string;
 }
 
+// Invitado externo a la reserva
+export interface Invitado {
+  id: string;
+  nombre: string;
+  genero: Genero;
+  invitadoPorId: string;
+  invitadoPorNombre: string;
+}
+
+export interface MudanzaLog {
+  fecha: Date;
+  habitacionAnterior: string;
+  habitacionNueva: string;
+  motivoUsuarioId: string;
+  motivoUsuarioNombre: string;
+}
+
 export interface Reserva {
   id: string;
   usuarioId: string;
@@ -94,22 +111,16 @@ export interface Reserva {
   estado: EstadoReserva;
   prioridad: NivelPrioridad;
   fechaReserva: Date; // Cuando se hizo la reserva
-  invitados: ParticipanteReserva[];
+  invitados?: Invitado[];
   pagoId?: string;
   montoPago?: number;
   pagado: boolean;
   notas?: string;
+  motivoCancelacion?: string;
+  fechaCancelacion?: Date;
   historialMudanzas?: MudanzaLog[];
   createdAt: Date;
   updatedAt: Date;
-}
-
-export interface MudanzaLog {
-  fecha: Date;
-  habitacionAnterior: string;
-  habitacionNueva: string;
-  motivoUsuarioId: string;
-  motivoUsuarioNombre: string;
 }
 
 // ============================================
