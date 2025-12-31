@@ -7,6 +7,7 @@ import {
   Alert,
   Pressable,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import Animated, { FadeInDown, FadeInUp, FadeInRight } from 'react-native-reanimated';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -14,6 +15,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '@/context';
 import {
@@ -41,6 +43,7 @@ const ESTADO_CONFIG = {
 };
 
 export default function ReservaDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -59,11 +62,20 @@ export default function ReservaDetailScreen() {
   }, [id]);
 
   const loadReserva = async () => {
-    if (!id) return;
+    if (!id) {
+      setLoading(false);
+      return;
+    }
     try {
+      console.log('Loading reserva with id:', id);
       const data = await getReserva(id);
+      console.log('Reserva data:', data);
+      if (!data) {
+        showToast('Reserva no encontrada', 'error');
+      }
       setReserva(data);
-    } catch (err) {
+    } catch (err: any) {
+      console.error('Error loading reserva:', err);
       showToast('Error cargando reserva', 'error');
     } finally {
       setLoading(false);
@@ -190,25 +202,31 @@ export default function ReservaDetailScreen() {
 
   if (loading) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Skeleton width="100%" height={200} style={styles.skeleton} />
-        <Skeleton width="100%" height={150} style={styles.skeleton} />
-        <Skeleton width="100%" height={100} style={styles.skeleton} />
-      </ScrollView>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Theme.colors.primary} />
+          <Text style={styles.loadingText}>Cargando reserva...</Text>
+        </View>
+      </View>
     );
   }
 
   if (!reserva) {
     return (
-      <View style={styles.errorContainer}>
-        <FontAwesome name="exclamation-circle" size={64} color={Theme.colors.textTertiary} />
-        <Text style={styles.errorText}>Reserva no encontrada</Text>
-        <AnimatedButton
-          title="Volver"
-          variant="outline"
-          icon="arrow-left"
-          onPress={() => router.back()}
-        />
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.errorContainer}>
+          <FontAwesome name="exclamation-circle" size={64} color={Theme.colors.textTertiary} />
+          <Text style={styles.errorText}>Reserva no encontrada</Text>
+          <Text style={styles.errorSubtext}>
+            La reserva que buscas no existe o fue eliminada
+          </Text>
+          <AnimatedButton
+            title="Volver"
+            variant="outline"
+            icon="arrow-left"
+            onPress={() => router.back()}
+          />
+        </View>
       </View>
     );
   }
@@ -224,7 +242,7 @@ export default function ReservaDetailScreen() {
       {/* Header con gradiente */}
       <LinearGradient
         colors={[Theme.colors.primary, Theme.colors.primaryDark]}
-        style={styles.header}
+        style={[styles.header, { paddingTop: insets.top + 16 }]}
       >
         <View style={styles.headerContent}>
           <Pressable
@@ -582,8 +600,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Theme.colors.background,
   },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Theme.spacing.md,
+  },
+  loadingText: {
+    fontSize: Theme.fontSize.md,
+    color: Theme.colors.textSecondary,
+  },
   header: {
-    paddingTop: 50,
     paddingBottom: Theme.spacing.lg,
   },
   headerContent: {
@@ -628,6 +655,12 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: Theme.fontSize.lg,
     color: Theme.colors.textSecondary,
+    fontWeight: Theme.fontWeight.semibold,
+  },
+  errorSubtext: {
+    fontSize: Theme.fontSize.sm,
+    color: Theme.colors.textTertiary,
+    textAlign: 'center',
   },
   mainCard: {
     marginBottom: Theme.spacing.md,
