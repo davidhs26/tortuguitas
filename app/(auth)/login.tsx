@@ -87,6 +87,7 @@ export default function LoginScreen() {
             </View>
             <Text style={styles.title}>Tortuguitas</Text>
             <Text style={styles.subtitle}>Quinta Familiar</Text>
+            <Text style={styles.buildInfo}>Canal: preview (OTA)</Text>
           </Animated.View>
 
           {/* Formulario */}
@@ -252,6 +253,11 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: Theme.fontSize.lg,
     color: 'rgba(255, 255, 255, 0.8)',
+  },
+  buildInfo: {
+    marginTop: Theme.spacing.xs,
+    fontSize: Theme.fontSize.xs,
+    color: 'rgba(255, 255, 255, 0.6)',
   },
   formContainer: {
     marginBottom: Theme.spacing.xl,
