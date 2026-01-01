@@ -83,6 +83,15 @@ export interface ParticipanteReserva {
   camaAsignada?: string;
 }
 
+export interface Invitado {
+  id: string;
+  nombre: string;
+  genero: Genero;
+  invitadoPorId?: string;
+  invitadoPorNombre?: string;
+  createdAt?: Date;
+}
+
 export interface Reserva {
   id: string;
   usuarioId: string;
@@ -94,7 +103,7 @@ export interface Reserva {
   estado: EstadoReserva;
   prioridad: NivelPrioridad;
   fechaReserva: Date; // Cuando se hizo la reserva
-  invitados: ParticipanteReserva[];
+  invitados: Invitado[];
   pagoId?: string;
   montoPago?: number;
   pagado: boolean;

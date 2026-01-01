@@ -16,6 +16,7 @@ import {
 import { db } from './firebase';
 import {
   Reserva,
+  Invitado,
   EstadoReserva,
   ParticipanteReserva,
   MudanzaLog,
@@ -83,7 +84,7 @@ export async function crearReserva(
   habitacionId: string,
   fechaShabbat: Date,
   participantes: ParticipanteReserva[],
-  invitados: ParticipanteReserva[] = [],
+  invitados: Invitado[] = [],
   notas?: string
 ): Promise<{ reserva: Reserva; mudanzas: ResultadoMudanza | null }> {
   const habitacion = await getHabitacion(habitacionId);
@@ -150,6 +151,10 @@ function serializeReserva(reserva: Reserva): Record<string, any> {
     ...reserva,
     fechaShabbat: reserva.fechaShabbat.toISOString(),
     fechaReserva: reserva.fechaReserva.toISOString(),
+    invitados: reserva.invitados?.map(inv => ({
+      ...inv,
+      createdAt: inv.createdAt ? inv.createdAt.toISOString() : undefined,
+    })) || [],
     historialMudanzas: reserva.historialMudanzas?.map(m => ({
       ...m,
       fecha: m.fecha.toISOString(),
@@ -159,12 +164,23 @@ function serializeReserva(reserva: Reserva): Record<string, any> {
   };
 }
 
+function parseDate(value: any): Date | undefined {
+  if (!value) return undefined;
+  if (value instanceof Date) return value;
+  if (typeof value.toDate === 'function') return value.toDate();
+  return new Date(value);
+}
+
 // Deserializar reserva desde Firestore
 function deserializeReserva(data: Record<string, any>): Reserva {
   return {
     ...data,
     fechaShabbat: new Date(data.fechaShabbat),
     fechaReserva: new Date(data.fechaReserva),
+    invitados: data.invitados?.map((inv: any) => ({
+      ...inv,
+      createdAt: parseDate(inv.createdAt),
+    })) || [],
     historialMudanzas: data.historialMudanzas?.map((m: any) => ({
       ...m,
       fecha: new Date(m.fecha),
@@ -209,6 +225,36 @@ export async function getReserva(id: string): Promise<Reserva | null> {
   }
 
   return deserializeReserva({ ...docSnap.data(), id: docSnap.id });
+}
+
+export async function agregarInvitado(reservaId: string, invitado: Invitado): Promise<void> {
+  const reserva = await getReserva(reservaId);
+
+  if (!reserva) {
+    throw new Error('Reserva no encontrada');
+  }
+
+  const nuevoInvitado: Invitado = {
+    ...invitado,
+    id: invitado.id || uuidv4(),
+    createdAt: new Date(),
+  };
+
+  await actualizarReserva(reservaId, {
+    invitados: [...(reserva.invitados || []), nuevoInvitado],
+  });
+}
+
+export async function quitarInvitado(reservaId: string, invitadoId: string): Promise<void> {
+  const reserva = await getReserva(reservaId);
+
+  if (!reserva) {
+    throw new Error('Reserva no encontrada');
+  }
+
+  await actualizarReserva(reservaId, {
+    invitados: (reserva.invitados || []).filter(inv => inv.id !== invitadoId),
+  });
 }
 
 // Actualizar reserva
